@@ -104,6 +104,7 @@ let to_dyn t : Dyn.t =
     ; ("kind", Kind.to_dyn t.kind)
     ; ("profile", Profile.to_dyn t.profile)
     ; ("merlin", Bool t.merlin)
+    ; ("fdo_target_exe", option string t.fdo_target_exe)
     ; ("for_host", option string (Option.map t.for_host ~f:(fun t -> t.name)))
     ; ("build_dir", Path.Build.to_dyn t.build_dir)
     ; ("toplevel_path", option path t.toplevel_path)
