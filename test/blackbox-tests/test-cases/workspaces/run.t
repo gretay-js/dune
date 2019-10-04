@@ -72,6 +72,14 @@ This test should build all three contexts:
   $ ./fdo/_build/foofoo/src/foo.exe
   <root>/_build/foofoo/src/foo.exe: hello from fdo!
 
+
+This test fails but it seems like a bug in the current version of fdo rules in dune
+  $ dune exec _build/default/src/foo.exe --root fdo --workspace fdo/dune-workspace.1
+
+  $ dune exec _build/default-fdo-foo/src/foo.exe --root fdo --workspace fdo/dune-workspace.1
+
+  $ dune exec _build/foofoo/src/foo.exe --root fdo --workspace fdo/dune-workspace.1
+
 This is intended to fail
 
   $ dune build --root fdo --workspace fdo/dune-workspace.2
