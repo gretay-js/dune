@@ -23,7 +23,7 @@ let opens modules m =
   | None -> Command.Args.S []
   | Some (m : Module.t) -> As [ "-open"; Module_name.to_string (Module.name m) ]
 
-let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
+let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
   let sctx = CC.super_context cctx in
   let dir = CC.dir cctx in
   let obj_dir = CC.obj_dir cctx in
@@ -40,6 +40,15 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
                 let dst =
                   Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:cm_kind
                 in
+                let obj =
+                  Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
+                    ~ext:ctx.lib_config.ext_obj
+                in
+                let linear =
+                  Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
+                    ~ext:Fdo.linear_ext
+                in
+                let linear_fdo = Fdo.make_filename linear ^ "-fdo" in
                 let copy_interface () =
                   (* symlink the .cmi into the public interface directory *)
                   if
@@ -63,36 +72,47 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
                     (* If we're compiling an implementation, then the cmi is
                        present *)
                     let public_vlib_module = Module.kind m = Impl_vmodule in
-                    match
-                      (cm_kind, Module.file m ~ml_kind:Intf, public_vlib_module)
-                    with
-                    (* If there is no mli, [ocamlY -c file.ml] produces both
-                       the .cmY and .cmi. We choose to use ocamlc to produce
-                       the cmi and to produce the cmx we have to wait to avoid
-                       race conditions. *)
-                    | Cmo, None, false ->
-                      copy_interface ();
-                      ( []
-                      , []
-                      , [ Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cmi ]
-                      )
-                    | Cmo, None, true
-                    | (Cmo | Cmx), _, _ ->
-                      ( force_read_cmi src
-                      , [ Path.build
-                            (Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cmi)
-                        ]
-                      , [] )
-                    | Cmi, _, _ ->
-                      copy_interface ();
-                      ([], [], [])
+                    match phase with
+                    | Some Emit -> ([], [], [])
+                    | Some Compile, None -> (
+                      match
+                        ( cm_kind
+                        , Module.file m ~ml_kind:Intf
+                        , public_vlib_module )
+                      with
+                      (* If there is no mli, [ocamlY -c file.ml] produces both
+                         the .cmY and .cmi. We choose to use ocamlc to produce
+                         the cmi and to produce the cmx we have to wait to
+                         avoid race conditions. *)
+                      | Cmo, None, false ->
+                        copy_interface ();
+                        ( []
+                        , []
+                        , [ Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cmi ]
+                        )
+                      | Cmo, None, true
+                      | (Cmo | Cmx), _, _ ->
+                        ( force_read_cmi src
+                        , [ Path.build
+                              (Obj_dir.Module.cm_file_unsafe obj_dir m
+                                 ~kind:Cmi)
+                          ]
+                        , [] )
+                      | Cmi, _, _ ->
+                        copy_interface ();
+                        ([], [], []) )
                 in
                 let other_targets =
                   match cm_kind with
                   | Cmx ->
-                    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
-                      ~ext:ctx.lib_config.ext_obj
-                    :: other_targets
+                    let ot =
+                      match phase with
+                      | Some Compile -> linear
+                      | Some Emit
+                      | None ->
+                        obj
+                    in
+                    ot :: other_targets
                   | Cmi
                   | Cmo ->
                     other_targets
@@ -169,6 +189,12 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
                     and+ pp_flags = pp in
                     flags @ pp_flags
                 in
+                let src, dst =
+                  match phase with
+                  | Some Compile -> (Dep src, Path dst)
+                  | Some Emit -> (Dep linear_fdo, Target dst)
+                  | None -> (Dep src, Target dst)
+                in
                 let modules = Compilation_context.modules cctx in
                 SC.add_rule sctx ~sandbox ~dir
                   ( Build.paths extra_deps >>> other_cm_files
@@ -189,6 +215,7 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
                             A "-nodynlink" )
                         ; A "-no-alias-deps"
                         ; opaque_arg
+                        ; As (Fdo.flags phase)
                         ; opens modules m
                         ; As
                             ( match stdlib with
@@ -198,7 +225,7 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
                                  flags? *)
                               [ "-nopervasives"; "-nostdlib" ] )
                         ; A "-o"
-                        ; Target dst
+                        ; dst
                         ; A "-c"
                         ; Command.Ml_kind.flag ml_kind
                         ; Dep src
@@ -206,10 +233,19 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) =
                         ] )))
 
 let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
-  build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmo;
-  build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx;
+  build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmo ~phase:None;
+  let ctx = CC.context cctx in
+  if Option.is_none ctx.fdo_target_exe then
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx ~phase:None
+  else (
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
+      ~phase:(Some compile);
+    Fdo.opt_rule cctx m;
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
+      ~phase:(Some emit)
+  );
   if not precompiled_cmi then
-    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmi;
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmi ~phase:None;
   Compilation_context.js_of_ocaml cctx
   |> Option.iter ~f:(fun js_of_ocaml ->
          (* Build *.cmo.js *)
@@ -219,7 +255,8 @@ let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
          let src = Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cm_kind.Cmo in
          let target = Path.Build.extend_basename src ~suffix:".js" in
          SC.add_rules sctx ~dir
-           (Js_of_ocaml_rules.build_cm cctx ~js_of_ocaml ~src ~target))
+           (Js_of_ocaml_rules.build_cm cctx ~js_of_ocaml ~src ~target
+              ~phase:None))
 
 let ocamlc_i ?(flags = []) ~dep_graphs cctx (m : Module.t) ~output =
   let sctx = CC.super_context cctx in
