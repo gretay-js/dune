@@ -37,6 +37,7 @@ type t =
   ; kind : Kind.t
   ; profile : Profile.t
   ; merlin : bool
+  ; fdo_target_exe : string option
   ; for_host : t option
   ; implicit : bool
   ; build_dir : Path.Build.t
@@ -209,7 +210,7 @@ let ocamlfind_printconf_path ~env ~ocamlfind ~toolchain =
   List.map l ~f:Path.of_filename_relative_to_initial_cwd
 
 let create ~(kind : Kind.t) ~path ~env ~env_nodes ~name ~merlin ~targets
-    ~host_context ~host_toolchain ~profile =
+    ~host_context ~host_toolchain ~profile ~fdo_target_exe =
   let opam_var_cache = Table.create (module String) 128 in
   ( match kind with
   | Opam { root = Some root; _ } -> Table.set opam_var_cache "root" root
@@ -434,6 +435,7 @@ let create ~(kind : Kind.t) ~path ~env ~env_nodes ~name ~merlin ~targets
       ; kind
       ; profile
       ; merlin
+      ; fdo_target_exe
       ; env_nodes
       ; for_host = host
       ; build_dir
@@ -547,9 +549,9 @@ let extend_paths t ~env =
 let opam_config_var t var =
   opam_config_var ~env:t.env ~cache:t.opam_var_cache var
 
-let default ~merlin ~env_nodes ~env ~targets =
+let default ~merlin ~env_nodes ~env ~targets ~fdo_target_exe =
   let path = Env.path env in
-  create ~kind:Default ~path ~env ~env_nodes ~merlin ~targets
+  create ~kind:Default ~path ~env ~env_nodes ~merlin ~targets ~fdo_target_exe
 
 let opam_version =
   let res = ref None in
@@ -574,7 +576,7 @@ let opam_version =
       Fiber.Future.wait future
 
 let create_for_opam ~root ~env ~env_nodes ~targets ~profile ~switch ~name
-    ~merlin ~host_context ~host_toolchain =
+    ~merlin ~host_context ~host_toolchain ~fdo_target_exe =
   let opam =
     match Lazy.force opam with
     | None -> Utils.program_not_found "opam" ~loc:None
@@ -624,7 +626,7 @@ let create_for_opam ~root ~env ~env_nodes ~targets ~profile ~switch ~name
   create
     ~kind:(Opam { root; switch })
     ~profile ~targets ~path ~env ~env_nodes ~name ~merlin ~host_context
-    ~host_toolchain
+    ~host_toolchain ~fdo_target_exe
 
 let instantiate_context env (workspace : Workspace.t)
     ~(context : Workspace.Context.t) ~host_context =
@@ -642,6 +644,7 @@ let instantiate_context env (workspace : Workspace.t)
       ; toolchain
       ; paths
       ; loc = _
+      ; fdo_target_exe
       } ->
     let merlin =
       workspace.merlin_context = Some (Workspace.Context.name context)
@@ -653,7 +656,7 @@ let instantiate_context env (workspace : Workspace.t)
     in
     let env = extend_paths ~env paths in
     default ~env ~env_nodes ~profile ~targets ~name ~merlin ~host_context
-      ~host_toolchain
+      ~host_toolchain ~fdo_target_exe
   | Opam
       { base =
           { targets
@@ -664,6 +667,7 @@ let instantiate_context env (workspace : Workspace.t)
           ; toolchain
           ; paths
           ; loc = _
+          ; fdo_target_exe
           }
       ; switch
       ; root
@@ -671,7 +675,7 @@ let instantiate_context env (workspace : Workspace.t)
       } ->
     let env = extend_paths ~env paths in
     create_for_opam ~root ~env_nodes ~env ~profile ~switch ~name ~merlin
-      ~targets ~host_context ~host_toolchain:toolchain
+      ~targets ~host_context ~host_toolchain:toolchain ~fdo_target_exe
 
 let create ~env (workspace : Workspace.t) =
   let rec contexts : t list Fiber.Once.t String.Map.t Lazy.t =
