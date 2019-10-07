@@ -31,3 +31,5 @@ let ooi_supports_no_approx version = version >= (4, 05, 0)
 let ooi_supports_no_code version = version >= (4, 05, 0)
 
 let supports_let_syntax version = version >= (4, 08, 0)
+
+let supports_split_at_emit version = version >= (4, 10, 0)

@@ -48,7 +48,9 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                   Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
                     ~ext:Fdo.linear_ext
                 in
-                let linear_fdo = Fdo.make_filename linear ^ "-fdo" in
+                let linear_fdo = Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
+                                   ~ext:Fdo.linear_fdo_ext
+                in
                 let copy_interface () =
                   (* symlink the .cmi into the public interface directory *)
                   if
@@ -73,8 +75,8 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                        present *)
                     let public_vlib_module = Module.kind m = Impl_vmodule in
                     match phase with
-                    | Some Emit -> ([], [], [])
-                    | Some Compile, None -> (
+                    | Some Fdo.Emit -> ([], [], [])
+                    | Some Fdo.Compile | None -> (
                       match
                         ( cm_kind
                         , Module.file m ~ml_kind:Intf
@@ -107,8 +109,8 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                   | Cmx ->
                     let ot =
                       match phase with
-                      | Some Compile -> linear
-                      | Some Emit
+                      | Some Fdo.Compile -> linear
+                      | Some Fdo.Emit
                       | None ->
                         obj
                     in
@@ -189,11 +191,10 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                     and+ pp_flags = pp in
                     flags @ pp_flags
                 in
-                let src, dst =
+                let src =
                   match phase with
-                  | Some Compile -> (Dep src, Path dst)
-                  | Some Emit -> (Dep linear_fdo, Target dst)
-                  | None -> (Dep src, Target dst)
+                  | Some Fdo.Emit -> linear_fdo
+                  | Some Fdo.Compile | None -> src
                 in
                 let modules = Compilation_context.modules cctx in
                 SC.add_rule sctx ~sandbox ~dir
@@ -225,7 +226,11 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                                  flags? *)
                               [ "-nopervasives"; "-nostdlib" ] )
                         ; A "-o"
-                        ; dst
+                        ; (
+                          match phase with
+                          | Some Fdo.Compile -> Path dst
+                          | Some Fdo.Emit | None -> Target dst
+                        )
                         ; A "-c"
                         ; Command.Ml_kind.flag ml_kind
                         ; Dep src
@@ -239,10 +244,10 @@ let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx ~phase:None
   else (
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
-      ~phase:(Some compile);
+      ~phase:(Some Fdo.Compile);
     Fdo.opt_rule cctx m;
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
-      ~phase:(Some emit)
+      ~phase:(Some Fdo.Emit)
   );
   if not precompiled_cmi then
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmi ~phase:None;

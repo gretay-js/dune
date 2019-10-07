@@ -1,7 +1,21 @@
-(* open Core
- * open Import
- *
- * let fdo_target_exe =
+open! Stdune
+module CC = Compilation_context
+module SC = Super_context
+
+type phase = Compile | Emit
+
+let linear_ext = ".cmir-linear"
+
+let linear_fdo_ext = linear_ext ^ "-fdo"
+
+let flags = function
+  | None -> []
+  | Some Compile ->
+    [ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
+  | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
+
+
+(* let fdo_target_exe =
  *   let f = function
  *     | "" -> None
  *     | s -> (
@@ -225,13 +239,3 @@
  * @ Fdo.Linker_script.deps fdo_linker_script
  * ; Fdo.Linker_script.flags fdo_linker_script ~linker_cwd
  *           ; Fdo.Linker_script.rules fdo_linker_script ~ocaml_bin *)
-
-let flags = function
-  | None -> flags
-  | Some Compile ->
-    [ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
-  | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
-
-let linear_ext = ".cmir-linear"
-
-let make_filename s = s ^ "-fdo"
