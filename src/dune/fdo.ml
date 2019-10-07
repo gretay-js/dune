@@ -1,6 +1,5 @@
 open! Stdune
 module CC = Compilation_context
-module SC = Super_context
 
 type phase = Compile | Emit
 
@@ -8,110 +7,79 @@ let linear_ext = ".cmir-linear"
 
 let linear_fdo_ext = linear_ext ^ "-fdo"
 
-let flags = function
+let phase_flags = function
   | None -> []
   | Some Compile ->
     [ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
 
+(* CR gyorsh: this should also be cached *)
+let fdo_use_profile cctx m profile_exists =
+  let ctx = CC.context cctx in
+  match Env.get ctx.env ~var:"OCAMLFDO_USE_PROFILE" with
+    | None | Some "if_exists" -> profile_exists
+    | Some "always" ->
+      if profile_exists then
+        true
+      else
+        User_error.raise
+          [ Pp.textf "Cannot build %s\n\
+                      OCAMLFDO_USE_PROFILE=always but profile file %s does not exist."
+              (Module_name.to_string m.name) fdo_profile
+          ]
+    | Some "never" -> false
+    | Some other -> User_error.raise
+                      [ Pp.textf "Failed to parse environment variable\n\
+                                  OCAMLFDO_USE_PROFILE=%s\n\
+                                  Permitted values: if-exists always never\n\
+                                  Default: if-exists" other
+                      ]
 
-(* let fdo_target_exe =
- *   let f = function
- *     | "" -> None
- *     | s -> (
- *       match String.is_suffix ~suffix:".exe" s && Filename.is_relative s with
- *       | true -> Some s
- *       | false ->
- *         failwithf
- *           "Bad WITH_FDO: %s\n\
- *            Please specify the name of the executable to optimize, \n\
- *            including path from jenga root. For example, \n\
- *           \  WITH_FDO='app/pal/bin/pal.exe'"
- *           s () )
- *   in
- *   Var.peek (Var.register_with_default "WITH_FDO" ~default:"" |> Var.map ~f)
- *
- * let enabled = Option.is_some fdo_target_exe
- *
- * let fdo_use_profile =
- *   match
- *     Var.peek
- *       (Var.register_enumeration "OCAMLFDO_USE_PROFILE"
- *          ~choices:
- *            (String.Map.of_alist_exn
- *               [ ("always", `Always)
- *               ; ("never", `Never)
- *               ; ("if-exists", `If_exists)
- *               ])
- *          ~default:"if-exists"
- *          ~fallback:(fun _ -> None))
- *   with
- *   | Ok a -> a
- *   | Error (`Bad s) -> failwithf "invalid OCAMLFDO_USE_PROFILE %s" s ()
- *
- * let _ocamlfdo_path = Named_artifact.binary "ocamlfdo"
- *
- * let opt_rule cctx ~dir ~src ~taget  =
- *   let linear_fdo = linear ^ "-fdo" in
- *   Super_context.add_rule sctx ~dir
- *     (Command.run ~dir:(Path.build dir)
- *        (Super_context.resolve_program sctx ~dir ~loc:(Some loc) "ocamlfdo"
- *           ~hint:"opam pin add --dev ocamlfdo")
- *        [ A "opt"
- *        ; As flags
- *        ; Target linear_fdo
- *        ; Deps (Path.build linear)
- *        ]);
- *
- *
- * let opt_rule_from_jenga ~dir ~source ~target ~ocamlfdoflags ~ocaml_bin =
- *   (* CR-soon gyorsh: after import ocamlfdo remove ocamlfdo_path*)
- *   let ocamlfdo_path = ocaml_bin ^/ "ocamlfdo" in
- *   Rule.create ~extra_deps:[] ~targets:[ target ]
- *     ( Dep.path source
- *     >>= fun () ->
- *     let fdo_profile =
- *       Path.root_relative (Option.value_exn fdo_target_exe ^ ".fdo-profile")
- *     in
- *     Dep.file_exists fdo_profile
- *     >>= fun profile_exists ->
- *     let use_profile =
- *       match fdo_use_profile with
- *       | `If_exists -> profile_exists
- *       | `Always ->
- *         if profile_exists then
- *           true
- *         else
- *           Located_error.raisef
- *             ~loc:{ source = File source; line = 1; start_col = 0; end_col = 0 }
- *             !"%{Path} cannot be built: OCAMLFDO_USE_PROFILE=always but \
- *               profile file %{Path} does not exist."
- *             source fdo_profile ()
- *       | `Never -> false
- *     in
- *     let deps =
- *       if use_profile then
- *         [ Dep.path fdo_profile ]
- *       else
- *         []
- *     in
- *     let flags =
- *       if use_profile then
- *         [ "-fdo-profile"
- *         ; Path.reach_from ~dir fdo_profile
- *         ; "-md5-unit"
- *         ; "-reorder-blocks"
- *         ; "opt"
- *         ; "-q"
- *         ]
- *       else
- *         [ "-md5-unit"; "-extra-debug"; "-q" ]
- *     in
- *     Dep.all_unit deps
- *     >>| fun () ->
- *     Action.process ~can_go_in_shared_cache:true ~sandbox:Sandbox.hardlink ~dir
- *       ocamlfdo_path
- *       ([ "opt" ] @ flags @ ocamlfdoflags @ [ basename source ]) )
+(* Location of ocamlfdo binary tool is independent of the module,
+     but may depend on the context.
+     If it isn't cached elsewhere, we should do it here. *)
+let ocamlfdo_binary sctx dir =
+  Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
+    ~hint:"opam pin add --dev ocamlfdo" in
+
+let opt_rule cctx m fdo_target_exe =
+  let sctx = CC.super_context cctx in
+  let dir = CC.dir cctx in
+  let obj_dir = CC.obj_dir cctx in
+  let linear =
+    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
+      ~ext:linear_ext
+  in
+  let linear_fdo = Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
+                     ~ext:linear_fdo_ext in
+  let fdo_profile = fdo_target_exe ^ ".fdo-profile" in
+  Build.file_exists fdo_profile
+  >>= fun profile_exists ->
+  let use_profile = fdo_use_profile ctx profile_exists in
+  let ocamlfdo_flags = Env.get ctx.env ~var:"OCAMLFDO_FLAGS" in
+  let flags =
+    if use_profile then
+      [ "-fdo-profile"
+      ; Dep fdo_profile
+      ; "-md5-unit"
+      ; "-reorder-blocks"
+      ; "opt"
+      ; "-q"
+      ]
+    else
+      [ "-md5-unit"; "-extra-debug"; "-q" ]
+  in
+  Super_context.add_rule sctx ~dir
+    (Command.run ~dir:(Path.build dir)
+       (ocamlfdo_binary sctx ~dir)
+       [ A "opt"
+       ; Command.Args.dyn flags
+       ; As ocamlfdo_flags
+       ; Target linear_fdo
+       ; Deps (Path.build linear)
+       ])
+
+(*
  *
  * module Linker_script = struct
  *   type env =
@@ -239,3 +207,12 @@ let flags = function
  * @ Fdo.Linker_script.deps fdo_linker_script
  * ; Fdo.Linker_script.flags fdo_linker_script ~linker_cwd
  *           ; Fdo.Linker_script.rules fdo_linker_script ~ocaml_bin *)
+
+(*
+
+decode_rule Sc.mode promote
+   exe_crules.ml
+   gen_rules.ml
+   exe.ml
+
+*)

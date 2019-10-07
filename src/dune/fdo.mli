@@ -6,8 +6,9 @@ val linear_ext : string
 
 val linear_fdo_ext : string
 
-val flags : phase option -> string list
+val phase_flags : phase option -> string list
 
+val opt_rule : Compilation_context.t -> Module.t -> unit
 
 (* open Import
  *

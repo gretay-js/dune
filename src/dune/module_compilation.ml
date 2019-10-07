@@ -191,9 +191,14 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                     and+ pp_flags = pp in
                     flags @ pp_flags
                 in
+                let output =
+                  match phase with
+                  | Some Fdo.Compile -> Command.Args.Path (Path.build dst)
+                  | Some Fdo.Emit | None -> Command.Args.Target dst
+                in
                 let src =
                   match phase with
-                  | Some Fdo.Emit -> linear_fdo
+                  | Some Fdo.Emit -> Path.build linear_fdo
                   | Some Fdo.Compile | None -> src
                 in
                 let modules = Compilation_context.modules cctx in
@@ -216,7 +221,7 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                             A "-nodynlink" )
                         ; A "-no-alias-deps"
                         ; opaque_arg
-                        ; As (Fdo.flags phase)
+                        ; As (Fdo.phase_flags phase)
                         ; opens modules m
                         ; As
                             ( match stdlib with
@@ -226,11 +231,7 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                                  flags? *)
                               [ "-nopervasives"; "-nostdlib" ] )
                         ; A "-o"
-                        ; (
-                          match phase with
-                          | Some Fdo.Compile -> Path dst
-                          | Some Fdo.Emit | None -> Target dst
-                        )
+                        ; output
                         ; A "-c"
                         ; Command.Ml_kind.flag ml_kind
                         ; Dep src
@@ -240,12 +241,13 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
 let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
   build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmo ~phase:None;
   let ctx = CC.context cctx in
-  if Option.is_none ctx.fdo_target_exe then
+  match ctx.fdo_target_exe with
+  | None ->
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx ~phase:None
-  else (
+  | Some fdo_target_exe -> (
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
       ~phase:(Some Fdo.Compile);
-    Fdo.opt_rule cctx m;
+    Fdo.opt_rule cctx m fdo_target_exe;
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
       ~phase:(Some Fdo.Emit)
   );
@@ -260,8 +262,7 @@ let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
          let src = Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cm_kind.Cmo in
          let target = Path.Build.extend_basename src ~suffix:".js" in
          SC.add_rules sctx ~dir
-           (Js_of_ocaml_rules.build_cm cctx ~js_of_ocaml ~src ~target
-              ~phase:None))
+           (Js_of_ocaml_rules.build_cm cctx ~js_of_ocaml ~src ~target))
 
 let ocamlc_i ?(flags = []) ~dep_graphs cctx (m : Module.t) ~output =
   let sctx = CC.super_context cctx in
