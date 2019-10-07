@@ -14,9 +14,9 @@ let phase_flags = function
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
 
 (* CR gyorsh: this should also be cached *)
-let fdo_use_profile cctx m profile_exists =
+let fdo_use_profile cctx m profile_exists fdo_profile =
   let ctx = CC.context cctx in
-  match Env.get ctx.env ~var:"OCAMLFDO_USE_PROFILE" with
+  match Env.get ctx.env "OCAMLFDO_USE_PROFILE" with
     | None | Some "if_exists" -> profile_exists
     | Some "always" ->
       if profile_exists then
@@ -25,7 +25,7 @@ let fdo_use_profile cctx m profile_exists =
         User_error.raise
           [ Pp.textf "Cannot build %s\n\
                       OCAMLFDO_USE_PROFILE=always but profile file %s does not exist."
-              (Module_name.to_string m.name) fdo_profile
+              (Module_name.to_string (Module.name m)) fdo_profile
           ]
     | Some "never" -> false
     | Some other -> User_error.raise
@@ -40,7 +40,7 @@ let fdo_use_profile cctx m profile_exists =
      If it isn't cached elsewhere, we should do it here. *)
 let ocamlfdo_binary sctx dir =
   Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
-    ~hint:"opam pin add --dev ocamlfdo" in
+    ~hint:"opam pin add --dev ocamlfdo"
 
 let opt_rule cctx m fdo_target_exe =
   let sctx = CC.super_context cctx in
@@ -55,7 +55,7 @@ let opt_rule cctx m fdo_target_exe =
   let fdo_profile = fdo_target_exe ^ ".fdo-profile" in
   Build.file_exists fdo_profile
   >>= fun profile_exists ->
-  let use_profile = fdo_use_profile ctx profile_exists in
+  let use_profile = fdo_use_profile ctx profile_exists fdo_profile in
   let ocamlfdo_flags = Env.get ctx.env ~var:"OCAMLFDO_FLAGS" in
   let flags =
     if use_profile then
