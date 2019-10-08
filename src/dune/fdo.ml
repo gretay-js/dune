@@ -1,7 +1,9 @@
 open! Stdune
 module CC = Compilation_context
 
-type phase = Compile | Emit
+type phase =
+  | Compile
+  | Emit
 
 let linear_ext = ".cmir-linear"
 
@@ -14,69 +16,76 @@ let phase_flags = function
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
 
 (* CR gyorsh: this should also be cached *)
-let fdo_use_profile cctx m profile_exists fdo_profile =
-  let ctx = CC.context cctx in
+let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
   match Env.get ctx.env "OCAMLFDO_USE_PROFILE" with
-    | None | Some "if_exists" -> profile_exists
-    | Some "always" ->
-      if profile_exists then
-        true
-      else
-        User_error.raise
-          [ Pp.textf "Cannot build %s\n\
-                      OCAMLFDO_USE_PROFILE=always but profile file %s does not exist."
-              (Module_name.to_string (Module.name m)) fdo_profile
-          ]
-    | Some "never" -> false
-    | Some other -> User_error.raise
-                      [ Pp.textf "Failed to parse environment variable\n\
-                                  OCAMLFDO_USE_PROFILE=%s\n\
-                                  Permitted values: if-exists always never\n\
-                                  Default: if-exists" other
-                      ]
+  | None
+  | Some "if_exists" ->
+    profile_exists
+  | Some "always" ->
+    if profile_exists then
+      true
+    else
+      User_error.raise
+        [ Pp.textf
+            "Cannot build %s\n\
+             OCAMLFDO_USE_PROFILE=always but profile file %s does not exist."
+            (Module_name.to_string (Module.name m))
+            fdo_profile
+        ]
+  | Some "never" -> false
+  | Some other ->
+    User_error.raise
+      [ Pp.textf
+          "Failed to parse environment variable\n\
+           OCAMLFDO_USE_PROFILE=%s\n\
+           Permitted values: if-exists always never\n\
+           Default: if-exists"
+          other
+      ]
 
-(* Location of ocamlfdo binary tool is independent of the module,
-     but may depend on the context.
-     If it isn't cached elsewhere, we should do it here. *)
+(* Location of ocamlfdo binary tool is independent of the module, but may
+   depend on the context. If it isn't cached elsewhere, we should do it here. *)
 let ocamlfdo_binary sctx dir =
   Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
     ~hint:"opam pin add --dev ocamlfdo"
 
 let opt_rule cctx m fdo_target_exe =
   let sctx = CC.super_context cctx in
+  let ctx = CC.context cctx in
   let dir = CC.dir cctx in
   let obj_dir = CC.obj_dir cctx in
-  let linear =
-    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
-      ~ext:linear_ext
+  let linear = Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:linear_ext in
+  let linear_fdo =
+    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:linear_fdo_ext
   in
-  let linear_fdo = Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
-                     ~ext:linear_fdo_ext in
   let fdo_profile = fdo_target_exe ^ ".fdo-profile" in
-  Build.file_exists fdo_profile
-  >>= fun profile_exists ->
-  let use_profile = fdo_use_profile ctx profile_exists fdo_profile in
-  let ocamlfdo_flags = Env.get ctx.env ~var:"OCAMLFDO_FLAGS" in
+  let fdo_profile_path = Path.relative Path.root fdo_profile in
+  let profile_exists = Build.file_exists fdo_profile_path in
   let flags =
+    let open Build.O in
+    let+ profile_exists = profile_exists in
+    let use_profile = fdo_use_profile ctx m profile_exists fdo_profile in
+    let open Command.Args in
     if use_profile then
-      [ "-fdo-profile"
-      ; Dep fdo_profile
-      ; "-md5-unit"
-      ; "-reorder-blocks"
-      ; "opt"
-      ; "-q"
-      ]
+      S
+        [ A "-fdo-profile"
+        ; Dep fdo_profile_path
+        ; As [ "-md5-unit"; "-reorder-blocks"; "opt"; "-q" ]
+        ]
     else
-      [ "-md5-unit"; "-extra-debug"; "-q" ]
+      S [ As [ "-md5-unit"; "-extra-debug"; "-q" ] ]
+  in
+  let ocamlfdo_flags =
+    Env.get ctx.env "OCAMLFDO_FLAGS"
+    |> Option.value ~default:"" |> String.extract_blank_separated_words
   in
   Super_context.add_rule sctx ~dir
-    (Command.run ~dir:(Path.build dir)
-       (ocamlfdo_binary sctx ~dir)
+    (Command.run ~dir:(Path.build dir) (ocamlfdo_binary sctx dir)
        [ A "opt"
-       ; Command.Args.dyn flags
+       ; Hidden_targets [ linear_fdo ]
+       ; Dep (Path.build linear)
        ; As ocamlfdo_flags
-       ; Target linear_fdo
-       ; Deps (Path.build linear)
+       ; Dyn flags
        ])
 
 (*
@@ -208,11 +217,4 @@ let opt_rule cctx m fdo_target_exe =
  * ; Fdo.Linker_script.flags fdo_linker_script ~linker_cwd
  *           ; Fdo.Linker_script.rules fdo_linker_script ~ocaml_bin *)
 
-(*
-
-decode_rule Sc.mode promote
-   exe_crules.ml
-   gen_rules.ml
-   exe.ml
-
-*)
+(* decode_rule Sc.mode promote exe_crules.ml gen_rules.ml exe.ml *)
