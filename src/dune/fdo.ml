@@ -58,7 +58,7 @@ let opt_rule cctx m fdo_target_exe =
     Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:linear_fdo_ext
   in
   let fdo_profile = fdo_target_exe ^ ".fdo-profile" in
-  let fdo_profile_path = Path.relative Path.root fdo_profile in
+  let fdo_profile_path = Path.(relative root fdo_profile) in
   let profile_exists = Build.file_exists fdo_profile_path in
   let flags =
     let open Build.O in
@@ -87,133 +87,71 @@ let opt_rule cctx m fdo_target_exe =
        ; Dyn flags
        ])
 
-(*
- *
- * module Linker_script = struct
- *   type env =
- *     { name : string
- *     ; exe_dir : Path.t
- *     }
- *
- *   type t = env option
- *
- *   let use_linker_script exe_dir name =
- *     match fdo_target_exe with
- *     | None -> false
- *     | Some fdo_target_exe ->
- *       Path.( = )
- *         (Path.root_relative fdo_target_exe)
- *         (Path.relative ~dir:exe_dir name)
- *
- *   let create name ~exe_dir =
- *     if use_linker_script exe_dir name then
- *       Some { exe_dir; name }
- *     else
- *       None
- *
- *   let linker_script e = Path.relative ~dir:e.exe_dir (e.name ^ ".linker-script")
- *
- *   let linker_script_flags e ~linker_cwd =
- *     ccopts
- *       [ "-Xlinker"
- *       ; sprintf "--script=%s"
- *           (Path.reach_from ~dir:linker_cwd (linker_script e))
- *       ]
- *
- *   let linker_script_rule e ~ocaml_bin =
- *     (* CR-soon gyorsh: after import ocamlfdo remove ocamlfdo_path*)
- *     let ocamlfdo_path = ocaml_bin ^/ "ocamlfdo" in
- *     let linker_script = linker_script e in
- *     let linker_script_hot =
- *       Path.relative ~dir:e.exe_dir (e.name ^ ".linker-script-hot")
- *     in
- *     let linker_script_template =
- *       ocaml_bin ^ "/../etc/ocamlfdo/linker-script"
- *     in
- *     Rule.create ~extra_deps:[] ~targets:[ linker_script ]
- *       ( Dep.file_exists linker_script_hot
- *       >>= fun linker_script_hot_exists ->
- *       let deps =
- *         if linker_script_hot_exists then
- *           [ Dep.path linker_script_hot ]
- *         else
- *           []
- *       in
- *       let hot_flags =
- *         if linker_script_hot_exists then
- *           [ "-linker-script-hot"
- *           ; Path.reach_from ~dir:e.exe_dir linker_script_hot
- *           ]
- *         else
- *           []
- *       in
- *       Dep.all_unit deps
- *       >>= fun () ->
- *       Dep.path (Path.absolute linker_script_template)
- *       >>| fun () ->
- *       Action.process ~can_go_in_shared_cache:true ~sandbox:Sandbox.hardlink
- *         ~dir:e.exe_dir ocamlfdo_path
- *         ( [ "linker-script"
- *           ; "-linker-script-template"
- *           ; linker_script_template
- *           ; "-o"
- *           ; Path.reach_from ~dir:e.exe_dir linker_script
- *           ]
- *         @ hot_flags ) )
- *
- *   let deps = function
- *     | None -> []
- *     | Some e -> [ Dep.path (linker_script e) ]
- *
- *   let flags t ~linker_cwd =
- *     match t with
- *     | None -> []
- *     | Some e -> linker_script_flags e ~linker_cwd
- *
- *   let rules t ~ocaml_bin =
- *     match t with
- *     | None -> []
- *     | Some e -> [ linker_script_rule e ~ocaml_bin ]
- * end *)
+module Linker_script = struct
+  type t = Path.t option
 
-(* (* for env *)
- *
- *
- * let ocamlfdoflags =
- *   let default = [] in
- *   peek_register_ordered_set_lang "OCAMLFDOFLAGS" ~default
- *
- * (* for the main compilation rule *)
- *
- *   let standard_compile_rule = compile_rule ~impl:ml ~phase_flags:[] standard_targets in
- *   let fdo_compile_rule =
- *     compile_rule
- *       ~impl:ml
- *       ~phase_flags:[ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
- *       (linear :: compile_targets)
- *   in
- *   let fdo_emit_rule =
- *     compile_rule
- *       ~impl:fdo_linear
- *       ~phase_flags:[ "-g"; "-start-from"; "emit"; "-function-sections" ]
- *       emit_targets
- *   in
- *   let fdo_linear_rule =
- *     Fdo.opt_rule ~dir ~ocamlfdoflags ~source:linear ~target:fdo_linear ~ocaml_bin
- *   in
- *   List.concat
- *     [ (if Fdo.enabled
- *        then [ fdo_compile_rule; fdo_linear_rule; fdo_emit_rule ]
- *        else [ standard_compile_rule ])
- *     ; (match spec_to_param with
- *        | Some conf -> [ Spec_to_param.rule ~dir ~ml ~cmt conf ]
- *        | None -> [])
- *     ] *)
+  let linker_script_rule cctx name =
+    let sctx = CC.super_context cctx in
+    let dir = CC.dir cctx in
+    let ocamlfdo = ocamlfdo_binary sctx dir in
+    let linker_script = Path.Build.relative dir (name ^ ".linker-script") in
+    let linker_script_hot =
+      Path.(relative root (name ^ ".linker-script-hot"))
+    in
+    let linker_script_template =
+      match ocamlfdo with
+      | Error _ -> assert false
+      | Ok ocamlfdo_path ->
+        let ocamlfdo_dir =
+          ocamlfdo_path |> Path.to_absolute_filename |> Filename.dirname
+        in
+        ocamlfdo_dir ^ "/../etc/ocamlfdo/linker-script"
+        |> Path.of_filename_relative_to_initial_cwd
+    in
+    let hot_exists = Build.file_exists linker_script_hot in
+    let flags =
+      let open Build.O in
+      let+ hot_exists = hot_exists in
+      let open Command.Args in
+      if hot_exists then
+        S [ A "-linker-script-hot"; Dep linker_script_hot ]
+      else
+        As []
+    in
+    Super_context.add_rule sctx ~dir
+      (Command.run ~dir:(Path.build dir) ocamlfdo
+         [ A "linker-script"
+         ; A "-linker-script-template"
+         ; Dep linker_script_template
+         ; A "-o"
+         ; Target linker_script
+         ; Dyn flags
+         ]);
+    Path.build linker_script
 
-(* let fdo_linker_script = Fdo.Linker_script.create name ~exe_dir in
- *
- * @ Fdo.Linker_script.deps fdo_linker_script
- * ; Fdo.Linker_script.flags fdo_linker_script ~linker_cwd
- *           ; Fdo.Linker_script.rules fdo_linker_script ~ocaml_bin *)
+  let create cctx name =
+    let ctx = CC.context cctx in
+    match ctx.fdo_target_exe with
+    | None -> None
+    | Some fdo_target_exe ->
+      Printf.printf "name=%s\n fdo=%s\n" name fdo_target_exe;
+      if String.equal name fdo_target_exe then
+        Some (linker_script_rule cctx fdo_target_exe)
+      else
+        None
 
-(* decode_rule Sc.mode promote exe_crules.ml gen_rules.ml exe.ml *)
+  let flags t =
+    let open Command.Args in
+    match t with
+    | None -> As []
+    | Some linker_script ->
+      S
+        [ A "-Xlinker"
+        ; A (sprintf "--script=%s" (Path.to_string linker_script))
+        ]
+
+  let deps t =
+    match t with
+    | None -> []
+    | Some linker_script -> [ linker_script ]
+end

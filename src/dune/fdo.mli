@@ -1,6 +1,8 @@
 (** Integration with feedback-directed optimizations using ocamlfdo. *)
 
-type phase = Compile | Emit
+type phase =
+  | Compile
+  | Emit
 
 val linear_ext : string
 
@@ -10,26 +12,12 @@ val phase_flags : phase option -> string list
 
 val opt_rule : Compilation_context.t -> Module.t -> string -> unit
 
-(* open Import
- *
- * val enabled : bool
- *
- * val opt_rule :
- *      dir:Path.t
- *   -> source:Path.t
- *   -> target:Path.t
- *   -> ocamlfdoflags:string list
- *   -> ocaml_bin:string
- *   -> Rule.t
- *
- * module Linker_script : sig
- *   type t
- *
- *   val create : string -> exe_dir:Path.t -> t
- *
- *   val deps : t -> unit Dep.t list
- *
- *   val flags : t -> linker_cwd:Path.t -> string list
- *
- *   val rules : t -> ocaml_bin:string -> Rule.t list
- * end *)
+module Linker_script : sig
+  type t
+
+  val create : Compilation_context.t -> string -> t
+
+  val flags : t -> Command.Args.dynamic Command.Args.t
+
+  val deps : t -> Stdune.Path.t list
+end
