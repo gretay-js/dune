@@ -5,9 +5,9 @@ type phase =
   | Compile
   | Emit
 
-let linear_ext = ".cmir-linear"
+let linear_ext () = ".cmir-linear"
 
-let linear_fdo_ext = linear_ext ^ "-fdo"
+let linear_fdo_ext () = linear_ext () ^ "-fdo"
 
 let fdo_profile_filename s = s ^ ".fdo-profile"
 
@@ -61,9 +61,11 @@ let opt_rule cctx m fdo_target_exe =
   let ctx = CC.context cctx in
   let dir = CC.dir cctx in
   let obj_dir = CC.obj_dir cctx in
-  let linear = Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:linear_ext in
+  let linear =
+    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:(linear_ext ())
+  in
   let linear_fdo =
-    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:linear_fdo_ext
+    Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:(linear_fdo_ext ())
   in
   let fdo_profile = fdo_profile_filename fdo_target_exe in
   let fdo_profile_path = Path.(relative root fdo_profile) in

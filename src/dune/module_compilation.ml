@@ -46,11 +46,11 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                 in
                 let linear =
                   Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
-                    ~ext:Fdo.linear_ext
+                    ~ext:(Fdo.linear_ext ())
                 in
                 let linear_fdo =
                   Obj_dir.Module.obj_file obj_dir m ~kind:Cmx
-                    ~ext:Fdo.linear_fdo_ext
+                    ~ext:(Fdo.linear_fdo_ext ())
                 in
                 let copy_interface () =
                   (* symlink the .cmi into the public interface directory *)

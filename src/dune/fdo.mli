@@ -4,9 +4,9 @@ type phase =
   | Compile
   | Emit
 
-val linear_ext : string
+val linear_ext : unit -> string
 
-val linear_fdo_ext : string
+val linear_fdo_ext : unit -> string
 
 val phase_flags : phase option -> string list
 
