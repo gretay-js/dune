@@ -27,8 +27,8 @@ let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
     else
       User_error.raise
         [ Pp.textf
-            "Cannot build %s\n\
-             OCAMLFDO_USE_PROFILE=always but profile file %s does not exist."
+            "Cannot build %s: OCAMLFDO_USE_PROFILE=always but profile file %s \
+             does not exist."
             (Module_name.to_string (Module.name m))
             fdo_profile
         ]
@@ -36,8 +36,7 @@ let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
   | Some other ->
     User_error.raise
       [ Pp.textf
-          "Failed to parse environment variable\n\
-           OCAMLFDO_USE_PROFILE=%s\n\
+          "Failed to parse environment variable:x OCAMLFDO_USE_PROFILE=%s\n\
            Permitted values: if-exists always never\n\
            Default: if-exists"
           other
