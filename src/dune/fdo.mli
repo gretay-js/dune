@@ -18,6 +18,4 @@ module Linker_script : sig
   val create : Compilation_context.t -> string -> t
 
   val flags : t -> Command.Args.dynamic Command.Args.t
-
-  val deps : t -> Stdune.Path.t list
 end

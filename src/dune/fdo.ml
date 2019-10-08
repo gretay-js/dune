@@ -9,6 +9,12 @@ let linear_ext = ".cmir-linear"
 
 let linear_fdo_ext = linear_ext ^ "-fdo"
 
+let fdo_profile_filename s = s ^ ".fdo-profile"
+
+let linker_script_filename s = s ^ ".linker-script"
+
+let linker_script_hot_filename s = s ^ ".linker-script-hot"
+
 let phase_flags = function
   | None -> []
   | Some Compile ->
@@ -57,7 +63,7 @@ let opt_rule cctx m fdo_target_exe =
   let linear_fdo =
     Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:linear_fdo_ext
   in
-  let fdo_profile = fdo_target_exe ^ ".fdo-profile" in
+  let fdo_profile = fdo_profile_filename fdo_target_exe in
   let fdo_profile_path = Path.(relative root fdo_profile) in
   let profile_exists = Build.file_exists fdo_profile_path in
   let flags =
@@ -92,11 +98,15 @@ module Linker_script = struct
 
   let linker_script_rule cctx name =
     let sctx = CC.super_context cctx in
+    let ctx = CC.context cctx in
     let dir = CC.dir cctx in
     let ocamlfdo = ocamlfdo_binary sctx dir in
-    let linker_script = Path.Build.relative dir (name ^ ".linker-script") in
+    let linker_script = linker_script_filename name in
+    let linker_script_path =
+      Path.Build.(relative ctx.build_dir linker_script)
+    in
     let linker_script_hot =
-      Path.(relative root (name ^ ".linker-script-hot"))
+      Path.(relative root (linker_script_hot_filename name))
     in
     let linker_script_template =
       match ocamlfdo with
@@ -119,22 +129,21 @@ module Linker_script = struct
         As []
     in
     Super_context.add_rule sctx ~dir
-      (Command.run ~dir:(Path.build dir) ocamlfdo
+      (Command.run ~dir:(Path.build ctx.build_dir) ocamlfdo
          [ A "linker-script"
          ; A "-linker-script-template"
          ; Dep linker_script_template
          ; A "-o"
-         ; Target linker_script
+         ; Target linker_script_path
          ; Dyn flags
          ]);
-    Path.build linker_script
+    Path.build linker_script_path
 
   let create cctx name =
     let ctx = CC.context cctx in
     match ctx.fdo_target_exe with
     | None -> None
     | Some fdo_target_exe ->
-      Printf.printf "name=%s\n fdo=%s\n" name fdo_target_exe;
       if String.equal name fdo_target_exe then
         Some (linker_script_rule cctx fdo_target_exe)
       else
@@ -146,12 +155,53 @@ module Linker_script = struct
     | None -> As []
     | Some linker_script ->
       S
-        [ A "-Xlinker"
-        ; A (sprintf "--script=%s" (Path.to_string linker_script))
+        [ A "-ccopt"
+        ; Concat ("", [ A "-Xlinker --script="; Dep linker_script ])
         ]
-
-  let deps t =
-    match t with
-    | None -> []
-    | Some linker_script -> [ linker_script ]
 end
+
+(* let decode_rule cctx name =
+ *   let decode_rule fdo_target_exe =
+ *     let sctx = CC.super_context cctx in
+ *     let dir = CC.dir cctx in
+ *     let ocamlfdo = ocamlfdo_binary sctx dir in
+ *     let fdo_profile = Path.Build.(relative root (fdo_profile_filename fdo_target_exe)) in
+ *     let linker_script_hot =
+ *       Path.Build.(relative root (name ^ ".linker-script-hot"))
+ *     in
+ *     let linker_script_template =
+ *       match ocamlfdo with
+ *       | Error _ -> assert false
+ *       | Ok ocamlfdo_path ->
+ *         let ocamlfdo_dir =
+ *           ocamlfdo_path |> Path.to_absolute_filename |> Filename.dirname
+ *         in
+ *         ocamlfdo_dir ^ "/../etc/ocamlfdo/linker-script"
+ *         |> Path.of_filename_relative_to_initial_cwd
+ *     in
+ *     let hot_exists = Build.file_exists linker_script_hot in
+ *     let flags =
+ *       let open Build.O in
+ *       let+ hot_exists = hot_exists in
+ *       let open Command.Args in
+ *       if hot_exists then
+ *         S [ A "-linker-script-hot"; Dep linker_script_hot ]
+ *       else
+ *         As []
+ *     in
+ *     Super_context.add_rule sctx ~dir
+ *       (Command.run ~dir:(Path.build dir) ocamlfdo
+ *          [ A "linker-script"
+ *          ; A "-linker-script-template"
+ *          ; Dep linker_script_template
+ *          ; A "-o"
+ *          ; Target linker_script
+ *          ; Dyn flags
+ *          ]);
+ *     Path.build linker_script
+ *   in
+ *   let ctx = CC.context cctx in
+ *   match ctx.fdo_target_exe with
+ *   | None -> None
+ *   | Some fdo_target_exe ->
+ *     decode_rule fdo_target_exe *)

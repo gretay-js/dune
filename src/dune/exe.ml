@@ -141,7 +141,6 @@ let link_exe ~loc ~name ~(linkage : Linkage.t) ~cm_files ~link_time_code_gen
          |> Build.dyn_paths_unit
      in
      prefix
-     >>> Build.paths (Fdo.Linker_script.deps fdo_linker_script)
      >>> Command.run ~dir:(Path.build ctx.build_dir) (Ok compiler)
            [ Command.Args.dyn ocaml_flags
            ; A "-o"
