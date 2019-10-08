@@ -121,6 +121,7 @@ let link_exe ~loc ~name ~(linkage : Linkage.t) ~cm_files ~link_time_code_gen
     let open Path in
     exe |> build |> drop_build_context_exn |> Source.to_string
   in
+  Fdo.decode_rule cctx target_exe;
   let fdo_linker_script = Fdo.Linker_script.create cctx target_exe in
   SC.add_rule sctx ~loc ~dir
     ~mode:

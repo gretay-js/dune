@@ -19,3 +19,5 @@ module Linker_script : sig
 
   val flags : t -> Command.Args.dynamic Command.Args.t
 end
+
+val decode_rule : Compilation_context.t -> string -> unit

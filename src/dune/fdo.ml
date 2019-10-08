@@ -15,17 +15,25 @@ let linker_script_filename s = s ^ ".linker-script"
 
 let linker_script_hot_filename s = s ^ ".linker-script-hot"
 
+let perf_data_filename s = s ^ ".perf.data"
+
 let phase_flags = function
   | None -> []
   | Some Compile ->
     [ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
 
+(* Location of ocamlfdo binary tool is independent of the module, but may
+   depend on the context. If it isn't cached elsewhere, we should do it here. *)
+let ocamlfdo_binary sctx dir =
+  Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
+    ~hint:"opam pin add --dev ocamlfdo"
+
 (* CR gyorsh: this should also be cached *)
 let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
   match Env.get ctx.env "OCAMLFDO_USE_PROFILE" with
   | None
-  | Some "if_exists" ->
+  | Some "if-exists" ->
     profile_exists
   | Some "always" ->
     if profile_exists then
@@ -42,17 +50,11 @@ let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
   | Some other ->
     User_error.raise
       [ Pp.textf
-          "Failed to parse environment variable:x OCAMLFDO_USE_PROFILE=%s\n\
+          "Failed to parse environment variable: OCAMLFDO_USE_PROFILE=%s\n\
            Permitted values: if-exists always never\n\
            Default: if-exists"
           other
       ]
-
-(* Location of ocamlfdo binary tool is independent of the module, but may
-   depend on the context. If it isn't cached elsewhere, we should do it here. *)
-let ocamlfdo_binary sctx dir =
-  Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
-    ~hint:"opam pin add --dev ocamlfdo"
 
 let opt_rule cctx m fdo_target_exe =
   let sctx = CC.super_context cctx in
@@ -96,17 +98,17 @@ let opt_rule cctx m fdo_target_exe =
 module Linker_script = struct
   type t = Path.t option
 
-  let linker_script_rule cctx name =
+  let linker_script_rule cctx fdo_target_exe =
     let sctx = CC.super_context cctx in
     let ctx = CC.context cctx in
     let dir = CC.dir cctx in
     let ocamlfdo = ocamlfdo_binary sctx dir in
-    let linker_script = linker_script_filename name in
+    let linker_script = linker_script_filename fdo_target_exe in
     let linker_script_path =
       Path.Build.(relative ctx.build_dir linker_script)
     in
     let linker_script_hot =
-      Path.(relative root (linker_script_hot_filename name))
+      Path.(relative root (linker_script_hot_filename fdo_target_exe))
     in
     let linker_script_template =
       match ocamlfdo with
@@ -160,48 +162,39 @@ module Linker_script = struct
         ]
 end
 
-(* let decode_rule cctx name =
- *   let decode_rule fdo_target_exe =
- *     let sctx = CC.super_context cctx in
- *     let dir = CC.dir cctx in
- *     let ocamlfdo = ocamlfdo_binary sctx dir in
- *     let fdo_profile = Path.Build.(relative root (fdo_profile_filename fdo_target_exe)) in
- *     let linker_script_hot =
- *       Path.Build.(relative root (name ^ ".linker-script-hot"))
- *     in
- *     let linker_script_template =
- *       match ocamlfdo with
- *       | Error _ -> assert false
- *       | Ok ocamlfdo_path ->
- *         let ocamlfdo_dir =
- *           ocamlfdo_path |> Path.to_absolute_filename |> Filename.dirname
- *         in
- *         ocamlfdo_dir ^ "/../etc/ocamlfdo/linker-script"
- *         |> Path.of_filename_relative_to_initial_cwd
- *     in
- *     let hot_exists = Build.file_exists linker_script_hot in
- *     let flags =
- *       let open Build.O in
- *       let+ hot_exists = hot_exists in
- *       let open Command.Args in
- *       if hot_exists then
- *         S [ A "-linker-script-hot"; Dep linker_script_hot ]
- *       else
- *         As []
- *     in
- *     Super_context.add_rule sctx ~dir
- *       (Command.run ~dir:(Path.build dir) ocamlfdo
- *          [ A "linker-script"
- *          ; A "-linker-script-template"
- *          ; Dep linker_script_template
- *          ; A "-o"
- *          ; Target linker_script
- *          ; Dyn flags
- *          ]);
- *     Path.build linker_script
- *   in
- *   let ctx = CC.context cctx in
- *   match ctx.fdo_target_exe with
- *   | None -> None
- *   | Some fdo_target_exe ->
- *     decode_rule fdo_target_exe *)
+let decode cctx fdo_target_exe =
+  let sctx = CC.super_context cctx in
+  let ctx = CC.context cctx in
+  let dir = CC.dir cctx in
+  let exe = Path.(relative root fdo_target_exe) in
+  let fdo_profile =
+    Path.Build.(relative ctx.build_dir (fdo_profile_filename fdo_target_exe))
+  in
+  let linker_script_hot =
+    Path.Build.(
+      relative ctx.build_dir (linker_script_hot_filename fdo_target_exe))
+  in
+  let perf_data = Path.(relative root (perf_data_filename fdo_target_exe)) in
+  Super_context.add_rule sctx ~dir
+    (* ~mode:
+     *   (Dune_file.Rule.Mode.Promote
+     *      { lifetime = Unlimited; into = None; only = None }) *)
+    (Command.run ~dir:(Path.build ctx.build_dir) (ocamlfdo_binary sctx dir)
+       [ A "decode"
+       ; A "-binary"
+       ; Dep exe
+       ; A "-perf-profile"
+       ; Dep perf_data
+       ; A "-q"
+       ; Hidden_targets [ fdo_profile; linker_script_hot ]
+       ])
+
+let decode_rule cctx name =
+  let ctx = CC.context cctx in
+  match ctx.fdo_target_exe with
+  | None -> ()
+  | Some fdo_target_exe ->
+    if String.equal name fdo_target_exe then
+      decode cctx fdo_target_exe
+    else
+      ()
