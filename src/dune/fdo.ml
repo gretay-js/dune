@@ -73,7 +73,7 @@ let opt_rule cctx m fdo_target_exe =
         ; As [ "-md5-unit"; "-reorder-blocks"; "opt"; "-q" ]
         ]
     else
-      S [ As [ "-md5-unit"; "-extra-debug"; "-q" ] ]
+      As [ "-md5-unit"; "-extra-debug"; "-q" ]
   in
   let ocamlfdo_flags =
     Env.get ctx.env "OCAMLFDO_FLAGS"
