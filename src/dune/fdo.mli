@@ -1,6 +1,7 @@
 (** Integration with feedback-directed optimizations using ocamlfdo. *)
 
 type phase =
+  | All
   | Compile
   | Emit
 

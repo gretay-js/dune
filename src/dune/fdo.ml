@@ -2,6 +2,7 @@ open! Stdune
 module CC = Compilation_context
 
 type phase =
+  | All
   | Compile
   | Emit
 
@@ -19,6 +20,7 @@ let perf_data_filename s = s ^ ".perf.data"
 
 let phase_flags = function
   | None -> []
+  | Some All -> [ "-g"; "-function-sections" ]
   | Some Compile ->
     [ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
@@ -148,7 +150,11 @@ module Linker_script = struct
     match ctx.fdo_target_exe with
     | None -> None
     | Some fdo_target_exe ->
-      if String.equal name fdo_target_exe then
+      if
+        String.equal name fdo_target_exe
+        && ( Ocaml_version.supports_function_sections ctx.version
+           || Ocaml_config.is_dev_version ctx.ocaml_config )
+      then
         Some (linker_script_rule cctx fdo_target_exe)
       else
         None

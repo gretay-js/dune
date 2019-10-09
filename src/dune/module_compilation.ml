@@ -78,6 +78,7 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                     match phase with
                     | Some Fdo.Emit -> ([], [], [])
                     | Some Fdo.Compile
+                    | Some Fdo.All
                     | None -> (
                       match
                         ( cm_kind
@@ -112,7 +113,9 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                     match phase with
                     | Some Fdo.Compile -> linear :: other_targets
                     | Some Fdo.Emit -> other_targets
-                    | None -> obj :: other_targets )
+                    | Some Fdo.All
+                    | None ->
+                      obj :: other_targets )
                   | Cmi
                   | Cmo ->
                     other_targets
@@ -193,12 +196,15 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
                   match phase with
                   | Some Fdo.Compile -> dst
                   | Some Fdo.Emit -> obj
-                  | None -> dst
+                  | Some Fdo.All
+                  | None ->
+                    dst
                 in
                 let src =
                   match phase with
                   | Some Fdo.Emit -> Path.build linear_fdo
                   | Some Fdo.Compile
+                  | Some Fdo.All
                   | None ->
                     src
                 in
@@ -242,10 +248,16 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
 let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
   build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmo ~phase:None;
   let ctx = CC.context cctx in
-  ( match ctx.fdo_target_exe with
-  | None ->
-    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx ~phase:None
-  | Some fdo_target_exe ->
+  let can_split =
+    Ocaml_version.supports_split_at_emit ctx.version
+    || Ocaml_config.is_dev_version ctx.ocaml_config
+  in
+  ( match (ctx.fdo_target_exe, can_split) with
+  | None, _
+  | Some _, false ->
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
+      ~phase:(Some Fdo.All)
+  | Some fdo_target_exe, true ->
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
       ~phase:(Some Fdo.Compile);
     Fdo.opt_rule cctx m fdo_target_exe;
