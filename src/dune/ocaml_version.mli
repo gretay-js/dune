@@ -47,3 +47,10 @@ val ooi_supports_no_code : t -> bool
 
 (** Whether the language supports custom let operators *)
 val supports_let_syntax : t -> bool
+
+(** Whether the compiler supports options for splitting compilation at emit:
+    [-stop-after scheduling] [-save-ir-after scheduling] [-start-from emit] *)
+val supports_split_at_emit : t -> bool
+
+(** Whether the compiler supports -function-sections *)
+val supports_function_sections : t -> bool

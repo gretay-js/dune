@@ -103,6 +103,8 @@ let check = make_standard "check"
 
 let fmt = make_standard "fmt"
 
+let fdo_decode = make_standard "fdo-decode"
+
 let encode { dir; name } =
   let open Dune_lang.Encoder in
   record [ ("dir", Dpath.encode (Path.build dir)); ("name", string name) ]
