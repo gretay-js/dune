@@ -253,7 +253,8 @@ let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
     || Ocaml_config.is_dev_version ctx.ocaml_config
   in
   ( match (ctx.fdo_target_exe, can_split) with
-  | None, _
+  | None, _ ->
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx ~phase:None
   | Some _, false ->
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
       ~phase:(Some Fdo.All)
