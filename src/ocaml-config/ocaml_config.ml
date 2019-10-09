@@ -512,8 +512,6 @@ let make vars =
 
 let is_dev_version t =
   try
-    Scanf.sscanf t.version_string "%s+dev%s" (fun v b ->
-        ignore (v : string);
-        ignore (b : string));
+    Scanf.sscanf t.version_string "%s+dev" (fun v -> ignore (v : string));
     true
   with Scanf.Scan_failure _ -> false
