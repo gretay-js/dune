@@ -2,6 +2,7 @@ open! Stdune
 module CC = Compilation_context
 
 type phase =
+  | All
   | Compile
   | Emit
 
@@ -19,15 +20,22 @@ let perf_data_filename s = s ^ ".perf.data"
 
 let phase_flags = function
   | None -> []
+  | Some All -> [ "-g"; "-function-sections" ]
   | Some Compile ->
     [ "-g"; "-stop-after"; "scheduling"; "-save-ir-after"; "scheduling" ]
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
 
 (* Location of ocamlfdo binary tool is independent of the module, but may
-   depend on the context. If it isn't cached elsewhere, we should do it here. *)
+   depend on the context. If it isn't cached elsewhere, we should do it here.
+   CR gyorsh: is it cached? *)
 let ocamlfdo_binary sctx dir =
-  Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
-    ~hint:"opam pin add --dev ocamlfdo"
+  let ocamlfdo =
+    Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
+      ~hint:"try: opam install ocamlfdo"
+  in
+  match ocamlfdo with
+  | Error e -> Action.Prog.Not_found.raise e
+  | Ok _ -> ocamlfdo
 
 (* CR gyorsh: this should also be cached *)
 let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
@@ -148,7 +156,11 @@ module Linker_script = struct
     match ctx.fdo_target_exe with
     | None -> None
     | Some fdo_target_exe ->
-      if String.equal name fdo_target_exe then
+      if
+        String.equal name fdo_target_exe
+        && ( Ocaml_version.supports_function_sections ctx.version
+           || Ocaml_config.is_dev_version ctx.ocaml_config )
+      then
         Some (linker_script_rule cctx fdo_target_exe)
       else
         None
@@ -168,28 +180,48 @@ let decode cctx fdo_target_exe =
   let sctx = CC.super_context cctx in
   let ctx = CC.context cctx in
   let dir = CC.dir cctx in
-  let exe = Path.(relative root fdo_target_exe) in
-  let fdo_profile =
-    Path.Build.(relative ctx.build_dir (fdo_profile_filename fdo_target_exe))
-  in
-  let linker_script_hot =
-    Path.Build.(
-      relative ctx.build_dir (linker_script_hot_filename fdo_target_exe))
-  in
+  let exe = Path.Build.(relative ctx.build_dir fdo_target_exe) in
   let perf_data = Path.(relative root (perf_data_filename fdo_target_exe)) in
+  let gen_suffix = "-gen" in
+  let fdo_profile = fdo_profile_filename fdo_target_exe in
+  let fdo_profile_gen = fdo_profile ^ gen_suffix in
+  let hot = linker_script_hot_filename fdo_target_exe in
+  let hot_gen = hot ^ gen_suffix in
+  let fdo_profile_gen_path =
+    Path.Build.relative ctx.build_dir fdo_profile_gen
+  in
+  let hot_gen_path = Path.Build.relative ctx.build_dir hot_gen in
   Super_context.add_rule sctx ~dir
-    (* ~mode:
-     *   (Dune_file.Rule.Mode.Promote
-     *      { lifetime = Unlimited; into = None; only = None }) *)
     (Command.run ~dir:(Path.build ctx.build_dir) (ocamlfdo_binary sctx dir)
        [ A "decode"
        ; A "-binary"
-       ; Dep exe
+       ; Dep (Path.build exe)
        ; A "-perf-profile"
        ; Dep perf_data
+       ; A "-fdo-profile"
+       ; Target fdo_profile_gen_path
+       ; A "-linker-script-hot"
+       ; Target hot_gen_path
        ; A "-q"
-       ; Hidden_targets [ fdo_profile; linker_script_hot ]
-       ])
+       ]);
+  let fdo_profile_gen_path = Path.build fdo_profile_gen_path in
+  let hot_gen_path = Path.build hot_gen_path in
+  let fdo_profile_path =
+    Path.build (Path.Build.relative ctx.build_dir fdo_profile)
+  in
+  let hot_path = Path.build (Path.Build.relative ctx.build_dir hot) in
+  let diff_fdo_profile =
+    Action.diff ~optional:true fdo_profile_path fdo_profile_gen_path
+  in
+  let diff_hot = Action.diff ~optional:true hot_path hot_gen_path in
+  Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
+    (Alias.fdo_decode ~dir)
+    (let open Build.O in
+    let+ () =
+      Build.paths
+        [ fdo_profile_path; fdo_profile_gen_path; hot_path; hot_gen_path ]
+    in
+    Action.chdir (Path.build dir) (Action.progn [ diff_fdo_profile; diff_hot ]))
 
 let decode_rule cctx name =
   let ctx = CC.context cctx in
