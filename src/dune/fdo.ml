@@ -26,10 +26,16 @@ let phase_flags = function
   | Some Emit -> [ "-g"; "-start-from"; "emit"; "-function-sections" ]
 
 (* Location of ocamlfdo binary tool is independent of the module, but may
-   depend on the context. If it isn't cached elsewhere, we should do it here. *)
+   depend on the context. If it isn't cached elsewhere, we should do it here.
+   CR gyorsh: is it cached? *)
 let ocamlfdo_binary sctx dir =
-  Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
-    ~hint:"opam pin add --dev ocamlfdo"
+  let ocamlfdo =
+    Super_context.resolve_program sctx ~dir ~loc:None "ocamlfdo"
+      ~hint:"try: opam install ocamlfdo"
+  in
+  match ocamlfdo with
+  | Error e -> Action.Prog.Not_found.raise e
+  | Ok _ -> ocamlfdo
 
 (* CR gyorsh: this should also be cached *)
 let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
