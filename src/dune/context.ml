@@ -430,6 +430,12 @@ let create ~(kind : Kind.t) ~path ~env ~env_nodes ~name ~merlin ~targets
       ; stdlib_dir
       }
     in
+    if Option.is_some fdo_target_exe &&
+       not (lib_config.has_native && Ocaml_version.supports_split_at_emit version) then (
+       User_error.raise
+         [ Pp.textf "fdo requires ocamlopt version >= 4.10 (context: %s)"
+             name
+         ]);
     let t =
       { name
       ; implicit
