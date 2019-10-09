@@ -185,18 +185,31 @@ let decode cctx fdo_target_exe =
     Path.Build.relative ctx.build_dir fdo_profile_gen
   in
   let hot_gen_path = Path.Build.relative ctx.build_dir hot_gen in
-  let _fdo_profile_path = Path.(relative root fdo_profile) in
-  let _hot_path = Path.(relative root hot) in
-  Super_context.add_rule sctx ~dir ~mode:Standard
+  let fdo_profile_path = Path.(relative root fdo_profile) in
+  let hot_path = Path.(relative root hot) in
+  Super_context.add_rule sctx ~dir
     (Command.run ~dir:(Path.build ctx.build_dir) (ocamlfdo_binary sctx dir)
        [ A "decode"
        ; A "-binary"
        ; Dep (Path.build exe)
        ; A "-perf-profile"
        ; Dep perf_data
+       ; A "-fdo-profile"
+       ; Target fdo_profile_gen_path
+       ; A "-linker-script-hot"
+       ; Target hot_gen_path
        ; A "-q"
-       ; Hidden_targets [ fdo_profile_gen_path; hot_gen_path ]
-       ])
+       ]);
+  let diff_fdo_profile =
+    Action.diff ~optional:true fdo_profile_path
+      (Path.build fdo_profile_gen_path)
+  in
+  let diff_hot =
+    Action.diff ~optional:true hot_path (Path.build hot_gen_path)
+  in
+  Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
+    (Alias.fdo_decode ~dir)
+    (Build.return (Action.progn [ diff_fdo_profile; diff_hot ]))
 
 let decode_rule cctx name =
   let ctx = CC.context cctx in
