@@ -205,9 +205,9 @@ let decode cctx fdo_target_exe =
   in
   let hot_path = Path.build (Path.Build.relative ctx.build_dir hot) in
   let diff_fdo_profile =
-    Action.diff ~optional:false fdo_profile_path fdo_profile_gen_path
+    Action.diff ~optional:true fdo_profile_path fdo_profile_gen_path
   in
-  let diff_hot = Action.diff ~optional:false hot_path hot_gen_path in
+  let diff_hot = Action.diff ~optional:true hot_path hot_gen_path in
   Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
     (Alias.fdo_decode ~dir)
     (let open Build.O in
