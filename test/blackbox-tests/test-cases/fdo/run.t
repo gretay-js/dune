@@ -7,7 +7,7 @@ a way to test opam switches.
 
 This test should build all three contexts:
 
-  $ which ocamlfdo 2> /dev/null && dune build src/foo.exe --root fdo --workspace fdo/dune-workspace.1
+  $ dune build src/foo.exe --root fdo --workspace fdo/dune-workspace.1
   Entering directory 'fdo'
 
   $ ./fdo/_build/default/src/foo.exe
