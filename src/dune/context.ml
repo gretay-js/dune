@@ -210,6 +210,25 @@ let ocamlfind_printconf_path ~env ~ocamlfind ~toolchain =
   let+ l = Process.run_capture_lines ~env Strict ocamlfind args in
   List.map l ~f:Path.of_filename_relative_to_initial_cwd
 
+let supports_fdo version ocfg =
+  (* Allows fdo to be invoked with a dev version of the compiler. This is
+     experimental and will be removed when ocamlfdo is fully integrated into
+     the toolchain. When using a dev version of ocamlopt that does not support
+     the required options, fdo builds will fail because the compiler won't
+     recongnize the options. Normals builds won't be affected. *)
+  let is_dev_version () =
+    let version_string = Ocaml_config.version_string ocfg in
+    try
+      Scanf.sscanf version_string "%s+dev%s" (fun v b ->
+          ignore (v : string);
+          ignore (b : string));
+      true
+    with Scanf.Scan_failure _ -> false
+  in
+  Ocaml_version.supports_split_at_emit version
+  || Ocaml_version.supports_function_sections version
+  || is_dev_version ()
+
 let create ~(kind : Kind.t) ~path ~env ~env_nodes ~name ~merlin ~targets
     ~host_context ~host_toolchain ~profile ~fdo_target_exe =
   let opam_var_cache = Table.create (module String) 128 in
@@ -430,12 +449,12 @@ let create ~(kind : Kind.t) ~path ~env ~env_nodes ~name ~merlin ~targets
       ; stdlib_dir
       }
     in
-    if Option.is_some fdo_target_exe &&
-       not (lib_config.has_native && Ocaml_version.supports_split_at_emit version) then (
-       User_error.raise
-         [ Pp.textf "fdo requires ocamlopt version >= 4.10 (context: %s)"
-             name
-         ]);
+    if
+      Option.is_some fdo_target_exe
+      && not (lib_config.has_native && supports_fdo version ocfg)
+    then
+      User_error.raise
+        [ Pp.textf "fdo requires ocamlopt version >= 4.10 (context: %s)" name ];
     let t =
       { name
       ; implicit

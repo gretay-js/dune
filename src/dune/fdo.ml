@@ -168,27 +168,28 @@ let decode cctx fdo_target_exe =
   let sctx = CC.super_context cctx in
   let ctx = CC.context cctx in
   let dir = CC.dir cctx in
-  let exe = Path.(relative root fdo_target_exe) in
-  let fdo_profile =
-    Path.Build.(relative ctx.build_dir (fdo_profile_filename fdo_target_exe))
-  in
-  let linker_script_hot =
-    Path.Build.(
-      relative ctx.build_dir (linker_script_hot_filename fdo_target_exe))
-  in
+  let exe = Path.Build.(relative ctx.build_dir fdo_target_exe) in
   let perf_data = Path.(relative root (perf_data_filename fdo_target_exe)) in
-  Super_context.add_rule sctx ~dir
-    ~mode:
-      (Dune_file.Rule.Mode.Promote
-         { lifetime = Unlimited; into = None; only = None })
+  let gen_suffix = "-gen" in
+  let fdo_profile = fdo_profile_filename fdo_target_exe in
+  let fdo_profile_gen = fdo_profile ^ gen_suffix in
+  let hot = linker_script_hot_filename fdo_target_exe in
+  let hot_gen = hot ^ gen_suffix in
+  let fdo_profile_gen_path =
+    Path.Build.relative ctx.build_dir fdo_profile_gen
+  in
+  let hot_gen_path = Path.Build.relative ctx.build_dir hot_gen in
+  let _fdo_profile_path = Path.(relative root fdo_profile) in
+  let _hot_path = Path.(relative root hot) in
+  Super_context.add_rule sctx ~dir ~mode:Standard
     (Command.run ~dir:(Path.build ctx.build_dir) (ocamlfdo_binary sctx dir)
        [ A "decode"
        ; A "-binary"
-       ; Dep exe
+       ; Dep (Path.build exe)
        ; A "-perf-profile"
        ; Dep perf_data
        ; A "-q"
-       ; Hidden_targets [ fdo_profile; linker_script_hot ]
+       ; Hidden_targets [ fdo_profile_gen_path; hot_gen_path ]
        ])
 
 let decode_rule cctx name =
