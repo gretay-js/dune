@@ -47,6 +47,8 @@ val check : dir:Path.Build.t -> t
 
 val fmt : dir:Path.Build.t -> t
 
+val fdo_decode : dir:Path.Build.t -> t
+
 (** Return the underlying stamp file *)
 val stamp_file : t -> Path.Build.t
 
