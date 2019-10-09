@@ -242,7 +242,7 @@ let build_cm cctx ~dep_graphs ~precompiled_cmi ~cm_kind (m : Module.t) ~phase =
 let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
   build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmo ~phase:None;
   let ctx = CC.context cctx in
-  match ctx.fdo_target_exe with
+  ( match ctx.fdo_target_exe with
   | None ->
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx ~phase:None
   | Some fdo_target_exe ->
@@ -250,21 +250,19 @@ let build_module ~dep_graphs ?(precompiled_cmi = false) cctx m =
       ~phase:(Some Fdo.Compile);
     Fdo.opt_rule cctx m fdo_target_exe;
     build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmx
-      ~phase:(Some Fdo.Emit);
-    if not precompiled_cmi then
-      build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmi ~phase:None;
-    Compilation_context.js_of_ocaml cctx
-    |> Option.iter ~f:(fun js_of_ocaml ->
-           (* Build *.cmo.js *)
-           let sctx = CC.super_context cctx in
-           let dir = CC.dir cctx in
-           let obj_dir = CC.obj_dir cctx in
-           let src =
-             Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cm_kind.Cmo
-           in
-           let target = Path.Build.extend_basename src ~suffix:".js" in
-           SC.add_rules sctx ~dir
-             (Js_of_ocaml_rules.build_cm cctx ~js_of_ocaml ~src ~target))
+      ~phase:(Some Fdo.Emit) );
+  if not precompiled_cmi then
+    build_cm cctx m ~dep_graphs ~precompiled_cmi ~cm_kind:Cmi ~phase:None;
+  Compilation_context.js_of_ocaml cctx
+  |> Option.iter ~f:(fun js_of_ocaml ->
+         (* Build *.cmo.js *)
+         let sctx = CC.super_context cctx in
+         let dir = CC.dir cctx in
+         let obj_dir = CC.obj_dir cctx in
+         let src = Obj_dir.Module.cm_file_unsafe obj_dir m ~kind:Cm_kind.Cmo in
+         let target = Path.Build.extend_basename src ~suffix:".js" in
+         SC.add_rules sctx ~dir
+           (Js_of_ocaml_rules.build_cm cctx ~js_of_ocaml ~src ~target))
 
 let ocamlc_i ?(flags = []) ~dep_graphs cctx (m : Module.t) ~output =
   let sctx = CC.super_context cctx in
