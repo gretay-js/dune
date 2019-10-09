@@ -216,18 +216,9 @@ let supports_fdo version ocfg =
      the toolchain. When using a dev version of ocamlopt that does not support
      the required options, fdo builds will fail because the compiler won't
      recongnize the options. Normals builds won't be affected. *)
-  let is_dev_version () =
-    let version_string = Ocaml_config.version_string ocfg in
-    try
-      Scanf.sscanf version_string "%s+dev%s" (fun v b ->
-          ignore (v : string);
-          ignore (b : string));
-      true
-    with Scanf.Scan_failure _ -> false
-  in
   Ocaml_version.supports_split_at_emit version
   || Ocaml_version.supports_function_sections version
-  || is_dev_version ()
+  || Ocaml_config.is_dev_version ocfg
 
 let create ~(kind : Kind.t) ~path ~env ~env_nodes ~name ~merlin ~targets
     ~host_context ~host_toolchain ~profile ~fdo_target_exe =
