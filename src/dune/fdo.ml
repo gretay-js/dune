@@ -38,7 +38,9 @@ let ocamlfdo_binary sctx dir =
   | Ok _ -> ocamlfdo
 
 (* CR gyorsh: this should also be cached *)
-let fdo_use_profile (ctx : Context.t) name profile_exists fdo_profile =
+let fdo_use_profile (ctx : Context.t) name fdo_profile =
+  let fdo_profile_src = Path.Source.(relative root fdo_profile) in
+  let profile_exists = File_tree.file_exists fdo_profile_src in
   match Env.get ctx.env "OCAMLFDO_USE_PROFILE" with
   | None
   | Some "if-exists" ->
@@ -75,16 +77,14 @@ let opt_rule cctx m fdo_target_exe =
     Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:(linear_fdo_ext ())
   in
   let fdo_profile = fdo_profile_filename fdo_target_exe in
-  let fdo_profile_src = Path.Source.(relative root fdo_profile) in
-  let profile_exists = File_tree.file_exists fdo_profile_src in
   let name = Module_name.to_string (Module.name m) in
-  let use_profile = fdo_use_profile ctx name profile_exists fdo_profile in
+  let use_profile = fdo_use_profile ctx name fdo_profile in
   let flags =
     let open Command.Args in
     if use_profile then
       S
         [ A "-fdo-profile"
-        ; Dep (Path.source fdo_profile_src)
+        ; Dep (Path.build (Path.Build.relative ctx.build_dir fdo_profile))
         ; As [ "-md5-unit"; "-reorder-blocks"; "opt"; "-q" ]
         ]
     else
