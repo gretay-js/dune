@@ -9,7 +9,8 @@ module Mode : sig
 end
 
 type 'path t =
-  { optional : bool
+  { force_promote : bool  (** even if file1 does not exist in source *)
+  ; optional : bool
   ; mode : Mode.t
   ; file1 : 'path
   ; file2 : 'path

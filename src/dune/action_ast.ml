@@ -185,12 +185,12 @@ struct
     | Mkdir x -> List [ atom "mkdir"; path x ]
     | Digest_files paths ->
       List [ atom "digest-files"; List (List.map paths ~f:path) ]
-    | Diff { optional; file1; file2; mode = Binary } ->
+    | Diff { force_promote = _; optional; file1; file2; mode = Binary } ->
       assert (not optional);
       List [ atom "cmp"; path file1; path file2 ]
-    | Diff { optional = false; file1; file2; mode = _ } ->
+    | Diff { force_promote = _; optional = false; file1; file2; mode = _ } ->
       List [ atom "diff"; path file1; path file2 ]
-    | Diff { optional = true; file1; file2; mode = _ } ->
+    | Diff { force_promote = _; optional = true; file1; file2; mode = _ } ->
       List [ atom "diff?"; path file1; path file2 ]
     | Merge_files_into (srcs, extras, into) ->
       List
@@ -246,6 +246,7 @@ struct
 
   let digest_files files = Digest_files files
 
-  let diff ?(optional = false) ?(mode = Diff.Mode.Text) file1 file2 =
-    Diff { optional; file1; file2; mode }
+  let diff ?(force_promote = false) ?(optional = false)
+      ?(mode = Diff.Mode.Text) file1 file2 =
+    Diff { force_promote; optional; file1; file2; mode }
 end
