@@ -16,6 +16,8 @@ let linker_script_filename s = s ^ ".linker-script"
 
 let linker_script_hot_filename s = s ^ ".linker-script-hot"
 
+let perf_data_filename s = s ^ ".perf.data"
+
 let phase_flags = function
   | None -> []
   | Some All -> [ "-g"; "-function-sections" ]
@@ -183,3 +185,56 @@ module Linker_script = struct
         ; Concat ("", [ A "-Xlinker --script="; Dep linker_script ])
         ]
 end
+
+let decode cctx fdo_target_exe =
+  let sctx = CC.super_context cctx in
+  let ctx = CC.context cctx in
+  let dir = CC.dir cctx in
+  let exe = Path.Build.(relative ctx.build_dir fdo_target_exe) in
+  let perf_data = perf_data_filename fdo_target_exe in
+  let perf_data_path = Path.(relative root perf_data) in
+  let fdo_profile = fdo_profile_filename fdo_target_exe in
+  let fdo_profile_gen = fdo_profile ^ "-gen" in
+  let fdo_profile_gen_path =
+    Path.Build.relative ctx.build_dir fdo_profile_gen
+  in
+  let extra_flags =
+    Env.get ctx.env "OCAMLFDO_DECODE_FLAGS"
+    |> Option.value ~default:"" |> String.extract_blank_separated_words
+  in
+  Super_context.add_rule sctx ~dir
+    (Command.run ~dir:(Path.build ctx.build_dir) (ocamlfdo_binary sctx dir)
+       [ A "decode"
+       ; A "-binary"
+       ; Dep (Path.build exe)
+       ; A "-perf-profile"
+       ; Dep perf_data_path
+       ; A "-fdo-profile"
+       ; Target fdo_profile_gen_path
+       ; A "-q"
+       ; As extra_flags
+       ]);
+  let copy_or_touch_in_build f =
+    let dst = Path.Build.relative ctx.build_dir f in
+    let src = Path.Source.(relative root f) in
+    if not (File_tree.file_exists src) then
+      Super_context.add_rule sctx ~dir (Build.write_file dst "");
+    dst
+  in
+  let f1 = Path.build (copy_or_touch_in_build fdo_profile) in
+  let f2 = Path.build fdo_profile_gen_path in
+  Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
+    (Alias.fdo_decode ~dir)
+    (let open Build.O in
+    let+ () = Build.paths [ f1; f2 ] in
+    Action.diff ~force_promote:true f1 f2)
+
+let decode_rule cctx name =
+  let ctx = CC.context cctx in
+  match ctx.fdo_target_exe with
+  | None -> ()
+  | Some fdo_target_exe ->
+    if String.equal name fdo_target_exe then
+      decode cctx fdo_target_exe
+    else
+      ()
