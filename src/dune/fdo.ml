@@ -204,21 +204,32 @@ let decode cctx fdo_target_exe =
        ; Target hot_gen_path
        ; A "-q"
        ]);
-  let fdo_profile_gen_path = Path.build fdo_profile_gen_path in
-  let hot_gen_path = Path.build hot_gen_path in
-  let fdo_profile_path =
-    Path.build (Path.Build.relative ctx.build_dir fdo_profile)
+  let copy_or_touch_in_build f =
+    let dst = Path.Build.relative ctx.build_dir f in
+    let src = Path.Source.(relative root f) in
+    if not (File_tree.file_exists src) then
+      Super_context.add_rule sctx ~dir (Build.write_file dst "");
+    dst
   in
-  let hot_path = Path.build (Path.Build.relative ctx.build_dir hot) in
-  let diff_fdo_profile =
-    Action.diff ~optional:true fdo_profile_path fdo_profile_gen_path
+  let pairs =
+    [ (copy_or_touch_in_build fdo_profile, fdo_profile_gen_path)
+    ; (copy_or_touch_in_build hot, hot_gen_path)
+    ]
   in
-  let diff_hot = Action.diff ~optional:true hot_path hot_gen_path in
+  let diff (f1, f2) =
+    let f1 = Path.build f1 in
+    let f2 = Path.build f2 in
+    let action = Action.diff ~optional_in_source:true f1 f2 in
+    let deps = [ f1; f1 ] in
+    (deps, action)
+  in
+  let deps, actions = List.map pairs ~f:diff |> List.split in
+  let deps = List.concat deps in
   Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
     (Alias.fdo_decode ~dir)
     (let open Build.O in
-    let+ () = Build.paths [ fdo_profile_gen_path; hot_gen_path ] in
-    Action.chdir (Path.build dir) (Action.progn [ diff_fdo_profile; diff_hot ]))
+    let+ () = Build.paths deps in
+    Action.chdir (Path.build dir) (Action.progn actions))
 
 let decode_rule cctx name =
   let ctx = CC.context cctx in

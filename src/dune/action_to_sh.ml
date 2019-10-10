@@ -66,16 +66,18 @@ let simplify act =
     | Remove_tree x -> Run ("rm", [ "-rf"; x ]) :: acc
     | Mkdir x -> mkdir x :: acc
     | Digest_files _ -> Run ("echo", []) :: acc
-    | Diff { optional; file1; file2; mode = Binary } ->
+    | Diff { optional_in_source = _; optional; file1; file2; mode = Binary } ->
       assert (not optional);
       Run ("cmp", [ file1; file2 ]) :: acc
-    | Diff { optional = true; file1; file2; mode = _ } ->
+    | Diff { optional_in_source = _; optional = true; file1; file2; mode = _ }
+      ->
       Sh
         (Printf.sprintf "test ! -e file1 -o ! -e file2 || diff %s %s"
            (String.quote_for_shell file1)
            (String.quote_for_shell file2))
       :: acc
-    | Diff { optional = false; file1; file2; mode = _ } ->
+    | Diff { optional_in_source = _; optional = false; file1; file2; mode = _ }
+      ->
       Run ("diff", [ file1; file2 ]) :: acc
     | Merge_files_into (srcs, extras, target) ->
       Sh

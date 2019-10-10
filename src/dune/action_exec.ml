@@ -279,7 +279,7 @@ let rec exec t ~ectx ~eenv =
     in
     let+ () = exec_echo eenv.stdout_to (Digest.to_string_raw s) in
     Done
-  | Diff ({ optional; file1; file2; mode } as diff) ->
+  | Diff ({ optional_in_source; optional; file1; file2; mode } as diff) ->
     let remove_intermediate_file () =
       if optional then
         try Path.unlink file2 with Unix.Unix_error (ENOENT, _, _) -> ()
@@ -291,7 +291,8 @@ let rec exec t ~ectx ~eenv =
       let is_copied_from_source_tree file =
         match Path.extract_build_context_dir_maybe_sandboxed file with
         | None -> false
-        | Some (_, file) -> Path.exists (Path.source file)
+        | Some (_, file) ->
+          Path.exists (Path.source file) || optional_in_source
       in
       let+ () =
         Fiber.finalize

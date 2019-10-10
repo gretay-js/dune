@@ -10,6 +10,7 @@ let rules (t : Dune_file.Tests.t) ~sctx ~dir ~scope ~expander ~dir_contents =
         { Diff.file1 = String_with_vars.make_text loc expected_basename
         ; file2 = String_with_vars.make_text loc (name ^ ".output")
         ; optional = false
+        ; optional_in_source = false
         ; mode = Text
         }
     else

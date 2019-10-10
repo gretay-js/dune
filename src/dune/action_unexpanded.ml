@@ -153,9 +153,10 @@ module Partial = struct
         check_mkdir (String_with_vars.loc tmpl) path;
         Mkdir path )
     | Digest_files x -> Digest_files (List.map x ~f:(E.path ~expander))
-    | Diff { optional; file1; file2; mode } ->
+    | Diff { optional_in_source; optional; file1; file2; mode } ->
       Diff
-        { optional
+        { optional_in_source
+        ; optional
         ; file1 = E.path ~expander file1
         ; file2 = E.path ~expander file2
         ; mode
@@ -280,9 +281,10 @@ let rec partial_expand t ~map_exe ~expander : Partial.t =
     | Right _ -> () );
     Mkdir res
   | Digest_files x -> Digest_files (List.map x ~f:(E.path ~expander))
-  | Diff { optional; file1; file2; mode } ->
+  | Diff { optional_in_source; optional; file1; file2; mode } ->
     Diff
-      { optional
+      { optional_in_source
+      ; optional
       ; file1 = E.path ~expander file1
       ; file2 = E.path ~expander file2
       ; mode
@@ -383,7 +385,7 @@ module Infer = struct
         infer acc t
       | Progn l -> List.fold_left l ~init:acc ~f:infer
       | Digest_files l -> List.fold_left l ~init:acc ~f:( +< )
-      | Diff { optional; file1; file2; mode = _ } ->
+      | Diff { optional_in_source = _; optional; file1; file2; mode = _ } ->
         if optional then
           acc +< file1
         else
