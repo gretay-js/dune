@@ -1,3 +1,8 @@
+Prerequisits:
+- external tool ocamlfdo that can be installed from opam
+- compiler version >= 4.10 (support for function
+sections and split compilation at emit).
+
 A workspace context can be used to build an executable using
 feedback-direct optimizations (fdo). The name of the context is
 determined from the name of the target executable for fdo and the
@@ -36,4 +41,21 @@ This is intended to fail
   18 |            ))
   Error: second definition of build context "default-fdo-test2"
   [1]
+
+Check OCAMLFDO_USE_PROFILE is handled correctly
+
+  $ OCAMLFDO_USE_PROFILE=what-can-go-here dune build src/foo.exe --workspace dune-workspace.4
+  
+  $ OCAMLFDO_USE_PROFILE=if-exists dune build src/foo.exe --workspace dune-workspace.4
+
+  $ OCAMLFDO_USE_PROFILE=if-exists dune build src-with-profile/foo.exe --workspace dune-workspace.4
+
+  $ OCAMLFDO_USE_PROFILE=never dune build src/foo.exe --workspace dune-workspace.4
+
+  $ OCAMLFDO_USE_PROFILE=never dune build src-with-profile/foo.exe --workspace dune-workspace.4
+
+  $ OCAMLFDO_USE_PROFILE=always dune build src/foo.exe --workspace dune-workspace.4
+
+  $ OCAMLFDO_USE_PROFILE=always dune build src-with-profile/foo.exe --workspace dune-workspace.4
+
 
