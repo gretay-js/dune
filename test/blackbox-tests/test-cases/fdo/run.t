@@ -59,3 +59,11 @@ Check OCAMLFDO_USE_PROFILE is handled correctly
   $ OCAMLFDO_USE_PROFILE=always dune build src-with-profile/foo.exe --workspace dune-workspace.4
 
 
+Check OCAMLFDO_FLAGS is passed on to "ocamlfdo opt"
+
+  $ OCAMLFDO_FLAGS="-help" dune build src-with-profile/foo.exe --workspace dune-workspace.4 | head -n 5
+
+Check target fdo-decode is defined. We can't check that it works correctly,
+because it requires perf.data file that may be big and depends on linux perf.
+
+  $ dune build @fdo-decode --workspace dune-workspace.4
