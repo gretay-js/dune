@@ -92,3 +92,30 @@ Check OCAMLFDO_FLAGS are passed on to "ocamlfdo opt"
   
     ocamlfdo opt [INPUT ...]
 
+Check target fdo-decode is defined. 
+
+  $ dune build @fdo-decode --workspace dune-workspace.4
+  File "src/foo.exe.fdo-profile", line 1, characters 0-0:
+  Error: Files _build/fdo/src/foo.exe.fdo-profile and
+  _build/fdo/src/foo.exe.fdo-profile-gen differ.
+  [1]
+
+  $ dune build @@src-with-profile/fdo-decode --workspace dune-workspace.5
+  Error: File unavailable: src-with-profile/foo.exe.perf.data
+  [1]
+
+  $ dune build src/foo.exe.fdo-profile-gen --workspace dune-workspace.4
+
+  $ dune build src/foo.exe.linker-script-hot-gen --workspace dune-workspace.4
+
+  $ dune promote
+
+  $ OCAMLFDO_USE_PROFILE=always dune build src/foo.exe --workspace dune-workspace.4
+  Error: Cannot build Foo: OCAMLFDO_USE_PROFILE=always but profile file
+  src/foo.exe.fdo-profile does not exist.
+  [1]
+
+  $ ls src/fdo.exe.fdo-profile src/fdo.exe.linker-script-hot -alt
+  ls: cannot access src/fdo.exe.fdo-profile: No such file or directory
+  ls: cannot access src/fdo.exe.linker-script-hot: No such file or directory
+  [2]
