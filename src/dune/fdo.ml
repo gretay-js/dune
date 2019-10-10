@@ -38,7 +38,9 @@ let ocamlfdo_binary sctx dir =
   | Ok _ -> ocamlfdo
 
 (* CR gyorsh: this should also be cached *)
-let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
+let fdo_use_profile (ctx : Context.t) name fdo_profile =
+  let fdo_profile_src = Path.Source.(relative root fdo_profile) in
+  let profile_exists = File_tree.file_exists fdo_profile_src in
   match Env.get ctx.env "OCAMLFDO_USE_PROFILE" with
   | None
   | Some "if-exists" ->
@@ -51,8 +53,7 @@ let fdo_use_profile (ctx : Context.t) m profile_exists fdo_profile =
         [ Pp.textf
             "Cannot build %s: OCAMLFDO_USE_PROFILE=always but profile file %s \
              does not exist."
-            (Module_name.to_string (Module.name m))
-            fdo_profile
+            name fdo_profile
         ]
   | Some "never" -> false
   | Some other ->
@@ -76,17 +77,14 @@ let opt_rule cctx m fdo_target_exe =
     Obj_dir.Module.obj_file obj_dir m ~kind:Cmx ~ext:(linear_fdo_ext ())
   in
   let fdo_profile = fdo_profile_filename fdo_target_exe in
-  let fdo_profile_path = Path.(relative root fdo_profile) in
-  let profile_exists = Build.file_exists fdo_profile_path in
+  let name = Module_name.to_string (Module.name m) in
+  let use_profile = fdo_use_profile ctx name fdo_profile in
   let flags =
-    let open Build.O in
-    let+ profile_exists = profile_exists in
-    let use_profile = fdo_use_profile ctx m profile_exists fdo_profile in
     let open Command.Args in
     if use_profile then
       S
         [ A "-fdo-profile"
-        ; Dep fdo_profile_path
+        ; Dep (Path.build (Path.Build.relative ctx.build_dir fdo_profile))
         ; As [ "-md5-unit"; "-reorder-blocks"; "opt"; "-q" ]
         ]
     else
@@ -102,7 +100,7 @@ let opt_rule cctx m fdo_target_exe =
        ; Hidden_targets [ linear_fdo ]
        ; Dep (Path.build linear)
        ; As ocamlfdo_flags
-       ; Dyn flags
+       ; flags
        ])
 
 module Linker_script = struct
@@ -181,7 +179,8 @@ let decode cctx fdo_target_exe =
   let ctx = CC.context cctx in
   let dir = CC.dir cctx in
   let exe = Path.Build.(relative ctx.build_dir fdo_target_exe) in
-  let perf_data = Path.(relative root (perf_data_filename fdo_target_exe)) in
+  let perf_data = perf_data_filename fdo_target_exe in
+  let perf_data_path = Path.(relative root perf_data) in
   let gen_suffix = "-gen" in
   let fdo_profile = fdo_profile_filename fdo_target_exe in
   let fdo_profile_gen = fdo_profile ^ gen_suffix in
@@ -197,31 +196,43 @@ let decode cctx fdo_target_exe =
        ; A "-binary"
        ; Dep (Path.build exe)
        ; A "-perf-profile"
-       ; Dep perf_data
+       ; Dep perf_data_path
        ; A "-fdo-profile"
        ; Target fdo_profile_gen_path
        ; A "-linker-script-hot"
        ; Target hot_gen_path
        ; A "-q"
        ]);
-  let fdo_profile_gen_path = Path.build fdo_profile_gen_path in
-  let hot_gen_path = Path.build hot_gen_path in
-  let fdo_profile_path =
-    Path.build (Path.Build.relative ctx.build_dir fdo_profile)
+  let copy_or_touch_in_build f =
+    let dst = Path.Build.relative ctx.build_dir f in
+    let src = Path.Source.(relative root f) in
+    if not (File_tree.file_exists src) then
+      Super_context.add_rule sctx ~dir (Build.write_file dst "");
+    dst
   in
-  let hot_path = Path.build (Path.Build.relative ctx.build_dir hot) in
-  let diff_fdo_profile =
-    Action.diff ~optional:true fdo_profile_path fdo_profile_gen_path
+  let diff (f1, f2) =
+    let f1 = Path.build f1 in
+    let f2 = Path.build f2 in
+    let action = Action.diff ~optional_in_source:true f1 f2 in
+    let deps = [ f1; f2 ] in
+    (deps, action)
   in
-  let diff_hot = Action.diff ~optional:true hot_path hot_gen_path in
+  let pairs =
+    [ (copy_or_touch_in_build fdo_profile, fdo_profile_gen_path)
+    ; (copy_or_touch_in_build hot, hot_gen_path)
+    ]
+  in
+  (* CR gyorsh: Can't do it in sequence, because if the first diff fails, and
+     then the file is promoted, then the second time decode target runs, it
+     will use the promoted file and thus modify the executable. Both files need
+     to be promoted at the same time. *)
+  let deps, actions = List.map pairs ~f:diff |> List.split in
+  let deps = List.concat deps in
   Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
     (Alias.fdo_decode ~dir)
     (let open Build.O in
-    let+ () =
-      Build.paths
-        [ fdo_profile_path; fdo_profile_gen_path; hot_path; hot_gen_path ]
-    in
-    Action.chdir (Path.build dir) (Action.progn [ diff_fdo_profile; diff_hot ]))
+    let+ () = Build.paths deps in
+    Action.progn actions)
 
 let decode_rule cctx name =
   let ctx = CC.context cctx in

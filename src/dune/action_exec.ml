@@ -279,7 +279,7 @@ let rec exec t ~ectx ~eenv =
     in
     let+ () = exec_echo eenv.stdout_to (Digest.to_string_raw s) in
     Done
-  | Diff ({ optional; file1; file2; mode } as diff) ->
+  | Diff ({ optional_in_source; optional; file1; file2; mode } as diff) ->
     let remove_intermediate_file () =
       if optional then
         try Path.unlink file2 with Unix.Unix_error (ENOENT, _, _) -> ()
@@ -309,7 +309,7 @@ let rec exec t ~ectx ~eenv =
             ( match optional with
             | false ->
               if
-                is_copied_from_source_tree file1
+                (is_copied_from_source_tree file1 || optional_in_source)
                 && not (is_copied_from_source_tree file2)
               then
                 Promotion.File.register_dep
@@ -319,7 +319,7 @@ let rec exec t ~ectx ~eenv =
                           (Path.extract_build_context_dir_maybe_sandboxed file1)))
                   ~correction_file:(Path.as_in_build_dir_exn file2)
             | true ->
-              if is_copied_from_source_tree file1 then
+              if is_copied_from_source_tree file1 || optional_in_source then
                 Promotion.File.register_intermediate
                   ~source_file:
                     (snd

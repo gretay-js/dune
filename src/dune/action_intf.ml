@@ -104,5 +104,11 @@ module type Helpers = sig
 
   val digest_files : path list -> t
 
-  val diff : ?optional:bool -> ?mode:Diff.Mode.t -> path -> path -> t
+  val diff :
+       ?optional_in_source:bool
+    -> ?optional:bool
+    -> ?mode:Diff.Mode.t
+    -> path
+    -> path
+    -> t
 end

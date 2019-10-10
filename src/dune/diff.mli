@@ -9,7 +9,9 @@ module Mode : sig
 end
 
 type 'path t =
-  { optional : bool
+  { optional_in_source : bool
+        (** used for promotion, file1 must exist in build *)
+  ; optional : bool
   ; mode : Mode.t
   ; file1 : 'path
   ; file2 : 'path
