@@ -547,6 +547,14 @@
    (progn (run %{exe:cram.exe} -test run.t) (diff? run.t run.t.corrected)))))
 
 (alias
+ (name fdo)
+ (deps (package dune) (source_tree test-cases/fdo))
+ (action
+  (chdir
+   test-cases/fdo
+   (progn (run %{exe:cram.exe} -test run.t) (diff? run.t run.t.corrected)))))
+
+(alias
  (name findlib)
  (deps (package dune) (source_tree test-cases/findlib))
  (action
@@ -2270,6 +2278,7 @@
  (deps
   (alias cinaps)
   (alias envs-and-contexts)
+  (alias fdo)
   (alias utop)
   (alias utop-default)
   (alias utop-default-implementation)))
