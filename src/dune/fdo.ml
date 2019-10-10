@@ -181,7 +181,8 @@ let decode cctx fdo_target_exe =
   let ctx = CC.context cctx in
   let dir = CC.dir cctx in
   let exe = Path.Build.(relative ctx.build_dir fdo_target_exe) in
-  let perf_data = Path.(relative root (perf_data_filename fdo_target_exe)) in
+  let perf_data = perf_data_filename fdo_target_exe in
+  let perf_data_path = Path.(relative root perf_data) in
   let gen_suffix = "-gen" in
   let fdo_profile = fdo_profile_filename fdo_target_exe in
   let fdo_profile_gen = fdo_profile ^ gen_suffix in
@@ -197,7 +198,7 @@ let decode cctx fdo_target_exe =
        ; A "-binary"
        ; Dep (Path.build exe)
        ; A "-perf-profile"
-       ; Dep perf_data
+       ; Dep perf_data_path
        ; A "-fdo-profile"
        ; Target fdo_profile_gen_path
        ; A "-linker-script-hot"
@@ -211,25 +212,29 @@ let decode cctx fdo_target_exe =
       Super_context.add_rule sctx ~dir (Build.write_file dst "");
     dst
   in
+  let diff (f1, f2) =
+    let f1 = Path.build f1 in
+    let f2 = Path.build f2 in
+    let action = Action.diff ~optional_in_source:true f1 f2 in
+    let deps = [ f1; f2 ] in
+    (deps, action)
+  in
   let pairs =
     [ (copy_or_touch_in_build fdo_profile, fdo_profile_gen_path)
     ; (copy_or_touch_in_build hot, hot_gen_path)
     ]
   in
-  let diff (f1, f2) =
-    let f1 = Path.build f1 in
-    let f2 = Path.build f2 in
-    let action = Action.diff ~optional_in_source:true f1 f2 in
-    let deps = [ f1; f1 ] in
-    (deps, action)
-  in
+  (* CR gyorsh: Can't do it in sequence, because if the first diff fails, and
+     then the file is promoted, then the second time decode target runs, it
+     will use the promoted file and thus modify the executable. Both files need
+     to be promoted at the same time. *)
   let deps, actions = List.map pairs ~f:diff |> List.split in
   let deps = List.concat deps in
   Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
     (Alias.fdo_decode ~dir)
     (let open Build.O in
     let+ () = Build.paths deps in
-    Action.chdir (Path.build dir) (Action.progn actions))
+    Action.progn actions)
 
 let decode_rule cctx name =
   let ctx = CC.context cctx in
