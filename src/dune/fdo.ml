@@ -217,10 +217,7 @@ let decode cctx fdo_target_exe =
   Super_context.add_alias_action sctx ~dir ~loc:None ~stamp:"fdo-decode"
     (Alias.fdo_decode ~dir)
     (let open Build.O in
-    let+ () =
-      Build.paths
-        [ fdo_profile_path; fdo_profile_gen_path; hot_path; hot_gen_path ]
-    in
+    let+ () = Build.paths [ fdo_profile_gen_path; hot_gen_path ] in
     Action.chdir (Path.build dir) (Action.progn [ diff_fdo_profile; diff_hot ]))
 
 let decode_rule cctx name =

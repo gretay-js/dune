@@ -1,5 +1,6 @@
 Prerequisits:
 - external tool ocamlfdo that can be installed from opam
+- linux perf (called by ocamlfdo)
 - compiler version >= 4.10 (support for function
 sections and split compilation at emit).
 
@@ -48,22 +49,33 @@ Check OCAMLFDO_USE_PROFILE is handled correctly
   
   $ OCAMLFDO_USE_PROFILE=if-exists dune build src/foo.exe --workspace dune-workspace.4
 
-  $ OCAMLFDO_USE_PROFILE=if-exists dune build src-with-profile/foo.exe --workspace dune-workspace.4
+  $ OCAMLFDO_USE_PROFILE=if-exists dune build src-with-profile/foo.exe --workspace dune-workspace.5
 
   $ OCAMLFDO_USE_PROFILE=never dune build src/foo.exe --workspace dune-workspace.4
 
-  $ OCAMLFDO_USE_PROFILE=never dune build src-with-profile/foo.exe --workspace dune-workspace.4
+  $ OCAMLFDO_USE_PROFILE=never dune build src-with-profile/foo.exe --workspace dune-workspace.5
 
   $ OCAMLFDO_USE_PROFILE=always dune build src/foo.exe --workspace dune-workspace.4
 
-  $ OCAMLFDO_USE_PROFILE=always dune build src-with-profile/foo.exe --workspace dune-workspace.4
+  $ OCAMLFDO_USE_PROFILE=always dune build src-with-profile/foo.exe --workspace dune-workspace.5
 
 
 Check OCAMLFDO_FLAGS is passed on to "ocamlfdo opt"
 
-  $ OCAMLFDO_FLAGS="-help" dune build src-with-profile/foo.exe --workspace dune-workspace.4 | head -n 5
+  $ OCAMLFDO_FLAGS="-help" dune build src/foo.exe --workspace dune-workspace.4 2>&1 | head -n 4
 
-Check target fdo-decode is defined. We can't check that it works correctly,
-because it requires perf.data file that may be big and depends on linux perf.
+Check target fdo-decode is defined. 
 
   $ dune build @fdo-decode --workspace dune-workspace.4
+
+  $ dune build @@src-with-profile/fdo-decode --workspace dune-workspace.5
+
+  $ dune build src/foo.exe.fdo-profile-gen --workspace dune-workspace.4
+
+  $ dune build src/foo.exe.linker-script-hot-gen --workspace dune-workspace.4
+
+  $ dune promote
+
+  $ OCAMLFDO_USE_PROFILE=always dune build src/foo.exe --workspace dune-workspace.4
+
+  $ ls src/fdo.exe.fdo-profile src/fdo.exe.linker-script-hot -alt
