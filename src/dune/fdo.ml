@@ -227,7 +227,18 @@ let decode cctx fdo_target_exe =
     (Alias.fdo_decode ~dir)
     (let open Build.O in
     let+ () = Build.paths [ f1; f2 ] in
-    Action.diff ~force_promote:true f1 f2)
+    Action.progn
+      [ Action.echo
+          [ sprintf
+              "Caution!! Running `dune build @fdo-decode` to generate a new \
+               profile.\n\
+               You must rename or remove %s immediately after `dune promote \
+               %s` to avoid corrupting the profile in the next invocation of \
+               `dune`.\n"
+              perf_data fdo_profile
+          ]
+      ; Action.diff ~force_promote:true f1 f2 ~mode:Diff.Mode.Binary
+      ])
 
 let decode_rule cctx name =
   let ctx = CC.context cctx in
