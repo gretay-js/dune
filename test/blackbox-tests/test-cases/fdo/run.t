@@ -92,7 +92,7 @@ Check OCAMLFDO_FLAGS are passed on to "ocamlfdo opt"
   
     ocamlfdo opt [INPUT ...]
 
-Check target fdo-decode is defined. 
+Check target fdo-decode is defined.
 
   $ dune build @fdo-decode --workspace dune-workspace.4
   File "src/foo.exe.fdo-profile", line 1, characters 0-0:
