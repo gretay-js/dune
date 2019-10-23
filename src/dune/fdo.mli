@@ -20,7 +20,7 @@ val opt_rule : Compilation_context.t -> Module.t -> string -> unit
 module Linker_script : sig
   type t
 
-  val create : Compilation_context.t -> string -> t
+  val create : Compilation_context.t -> Path.t -> t
 
   val flags : t -> Command.Args.dynamic Command.Args.t
 end
