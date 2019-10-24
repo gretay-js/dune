@@ -75,7 +75,7 @@ module Mode = struct
     match Env.get ctx.env var with
     | None -> default
     | Some v -> (
-      match List.find_opt (fun s -> String.equal v (to_string s)) all with
+      match List.find_opt ~f:(fun s -> String.equal v (to_string s)) all with
       | Some v -> v
       | None ->
         User_error.raise

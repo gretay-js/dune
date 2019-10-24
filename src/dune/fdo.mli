@@ -1,4 +1,5 @@
 (** Integration with feedback-directed optimizations using ocamlfdo. *)
+open Stdune
 
 type phase =
   | All
