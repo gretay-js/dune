@@ -15,7 +15,7 @@ val c_flags : Context.t -> string list
 
 val cxx_flags : Context.t -> string list
 
-val opt_rule : Compilation_context.t -> Module.t -> string -> unit
+val opt_rule : Compilation_context.t -> Module.t -> unit
 
 module Linker_script : sig
   type t
