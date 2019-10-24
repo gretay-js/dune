@@ -18,8 +18,8 @@ homepage: "https://github.com/ocaml/dune"
 doc: "https://dune.readthedocs.io/"
 bug-reports: "https://github.com/ocaml/dune/issues"
 depends: [
-  "dune" {>= "2.0"}
-  "dune-private-libs" {= version}
+  "dune" 
+  "dune-private-libs"
 ]
 build: [
   ["dune" "subst"] {pinned}
